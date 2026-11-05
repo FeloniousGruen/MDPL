@@ -1,0 +1,168 @@
+---
+title: "How MDPL chooses the borrowing weights"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{How MDPL chooses the borrowing weights}
+  %\VignetteEncoding{UTF-8}
+  %\VignetteEngine{knitr::rmarkdown}
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", fig.width = 6.5, fig.height = 3.8)
+library(MDPL)
+```
+
+## What the weights do
+
+Each observational source $k$ gets a weight $\eta_k\in[0,1]$ that
+influences its information in the fused estimate: $\eta_k=0$ ignores the
+source and $\eta_k=1$ pools it with the trial. The weight selection is
+discussed in the relevant paper - they come from fits aimed to estimate
+predictive performance on the **trial** data alone.
+
+```{r sim}
+sim <- function(n, bias = 0, shift = 0) {
+  X <- rnorm(n, 1); U <- rnorm(n)
+  A <- rbinom(n, 1, if (bias == 0) 0.5 else plogis(X - 1 + bias * U))
+  data.frame(X = X, A = A,
+             Y = 0.5 + shift + X + 0.2 * A + 0.1 * A * X + bias * U + rnorm(n))
+}
+```
+
+The true effect is $\tau(x)=0.2+0.1x$. `bias` is the strength of an
+unmeasured confounder $U$ in the observational data; `shift` moves a
+source's outcome by a constant, changing the intercept but **not** the
+treatment effect.
+
+## Weights respond to confounding
+
+Fit the same trial against sources with increasing `bias`.
+
+```{r sweep}
+set.seed(1)
+trial <- sim(300)
+biases <- c(0, 0.5, 1, 2)
+eta <- t(sapply(biases, function(b) mdpl(Y ~ A * X, trial, list(sim(1000, b)), treat = "A")$eta[1, ]))
+data.frame(confounding = biases, round(eta, 2))
+```
+
+`fit$eta` has one row per source and one column per *trace multiplier*,
+the $\lambda$ in the surrogate
+$f(\eta) = g'S^{-1}AS^{-1}g + \lambda\,\mathrm{tr}(AS^{-1})$ that the
+Taylor method optimises: the first term is the squared bias a source
+adds, the second the variance it removes. `t2` ($\lambda=2$,
+leave-one-out) is the default everywhere; `t1` ($\lambda=1$) is more
+conservative and is available with `trace = "t1"`.
+
+## Several sources, one weight each
+
+With `K` sources you get `K` weights, found jointly.
+
+```{r multi}
+set.seed(2)
+trial <- sim(300)
+obs <- list(clean = sim(1000, 0), mild = sim(1000, 0.5), strong = sim(1000, 2))
+fit <- mdpl(Y ~ A * X, trial, obs, treat = "A")
+round(fit$eta, 2)
+```
+
+A source's weight depends on what the others contribute. To treat all
+sources as one population, `pooled = TRUE` stacks them and gives a
+single weight:
+
+```{r pooled}
+round(mdpl(Y ~ A * X, trial, obs, treat = "A", pooled = TRUE)$eta, 2)
+```
+
+Pool when the sources are exchangeable (sites of one registry). Use
+per-source weights when quality differs, since pooling averages a bad
+source's bias into the good one.
+
+## What the weights are scored on
+
+By default the score covers the **whole parameter vector**: a source is
+borrowed from to the extent that it agrees with the trial on everything
+in the model.
+
+`target` is an optional extension of the Taylor method that scores only
+some parameters. `target = "cate"` uses the treatment-effect terms (here
+`A` and `A:X`), so nuisance differences such as the intercept are not
+penalised; you can also name parameters, e.g. `target = c("A", "A:X")`.
+Take an observational data set with the right effect but a constant outcome shift of 1:
+
+```{r target}
+set.seed(3)
+trial <- sim(300); shifted <- list(shifted = sim(1000, 0, shift = 1))
+rbind(`default (all parameters)` = mdpl(Y ~ A * X, trial, shifted, treat = "A")$eta[1, ],
+      `target = "cate"`          = mdpl(Y ~ A * X, trial, shifted, treat = "A", target = "cate")$eta[1, ])
+```
+
+Scored on everything, the shifted source looks biased through its
+intercept; scored on the effect parameters it is borrowed from. With a
+`target` the score uses the trial's *marginal* information on those
+parameters, so the others are integrated out. `target` applies to the
+Taylor method only; ELPD and CV score the whole trial likelihood and
+warn if you set it.
+
+## Taylor, ELPD proxy and cross-validation
+
+All three methods search from zero borrowing.
+
+- `method = "taylor"` (default) minimises a quadratic surrogate of the
+  trial's predictive score from the estimates and information matrices
+  alone, so it is nearly instant.
+- `method = "elpd"` is an ELPD *proxy*: for each candidate weight it
+  draws from the power posterior and scores the trial data by
+  (in-sample) WAIC. It is slower.
+- `method = "cv"` is the gold standard: refit the trial without each
+  fold, fuse with the unchanged source summaries and score on the
+  held-out trial rows.
+
+```{r methods}
+set.seed(4)
+trial <- sim(300); one <- list(mild = sim(1000, 0.5))
+system.time(ft <- mdpl(Y ~ A * X, trial, one, treat = "A"))
+system.time(fe <- mdpl(Y ~ A * X, trial, one, treat = "A", method = "elpd"))
+system.time(fc <- mdpl(Y ~ A * X, trial, one, treat = "A", method = "cv", folds = 5))
+rbind(taylor = ft$eta[1, ], elpd = fe$eta[1, ], cv = fc$eta[1, ])
+```
+
+The ELPD route also returns its profile; a flat one means the data
+barely distinguish heavy from light borrowing.
+
+```{r elpd-plot}
+plot(elpd ~ eta, data = fe$selection$table, type = "b", pch = 16,
+     xlab = expression(eta), ylab = "ELPD proxy (WAIC) on the trial")
+abline(v = fe$eta[1, 1], lty = 2)
+```
+
+### Cross-validation options
+
+`folds` is the number of folds, or a vector of fold labels.
+`type = "if"` replaces the refits by influence-function leave-one-out
+where the model supplies it. The held-out score is the trial's own loss
+(minus the log-likelihood) unless you pass `loss`: a function of the
+fused parameters, the held-out data and the trial model that returns one
+value per row (lower is better).
+
+```{r cv-loss}
+my_loss <- function(Theta, data, model) (Theta[, "A"] - 0.2)^2
+mdpl(Y ~ A * X, trial, one, treat = "A", method = "cv", folds = 5,
+     loss = my_loss)$eta
+```
+
+For `method = "taylor"` the analogue is `metric`, the matrix (or a
+function of the trial model returning it) of the quadratic form that
+scores the fused estimate; the default is the trial information, and it
+overrides `target`.
+
+```{r metric}
+H <- diag(c(0, 0, 1, 1))   # score only the last two coefficients
+mdpl(Y ~ A * X, trial, one, treat = "A", metric = H)$eta
+```
+
+Use Taylor by default, ELPD for the profile, and CV as a reference check
+or for a different loss.

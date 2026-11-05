@@ -1,0 +1,224 @@
+---
+title: "Introduction to MDPL: fusing a trial with observational data"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Introduction to MDPL: fusing a trial with observational data}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", fig.width = 6.5, fig.height = 3.8)
+library(MDPL)
+```
+
+## The idea
+
+A randomised trial gives an unbiased but noisy treatment effect;
+observational data are larger but may be confounded. MDPL (*multi-source
+data fusion via power likelihoods*) raises the likelihood of each
+observational data set $k$ to a weight $\eta_k\in[0,1]$:
+
+$$p(\theta \mid \text{trial}, \text{sources}) \;\propto\; L_{\text{trial}}(\theta)\prod_k L_k(\theta)^{\eta_k}.$$
+
+The weights are chosen based on agreement with the trial data: a source
+that agrees with the trial gets a weight near 1, a biased one near 0.
+This holds for every model (GLMs, `causl` frugal models, your own
+likelihood); only the specification changes.
+
+Throughout the vignettes we say *observational* for the data that
+supplement the trial, but nothing in the method requires them to be
+observational: any secondary data (another trial, a registry, historical
+controls) can be used in the same way. A *source* is any one of the
+data sets, trial or secondary.
+
+## The key functions
+
+An analysis takes two steps:
+
+| step | function | what it does |
+|----|----|----|
+| 1\. fit | `mdpl()` | fits the model to the trial and each source, chooses the weights, returns one object |
+| 2\. estimate | `mdpl_cate()`, `mdpl_ate()`, `mdpl_coef()` | effects and coefficients with intervals, for any trace, scale or population |
+
+The step 1 object already holds the weights (`fit$eta`), the
+coefficients, ATE and CATE (`fit$estimates`), the fitted models and,
+with `bootstrap_CI = TRUE`, the bootstrap replicates; step 2 is for
+anything beyond the defaults. The **CATE** is set by the outcome model:
+for `Y ~ A * X` it is the `A` coefficient plus the `A:X` coefficient
+times `X`, stored as a formula you can call on any data frame of
+covariates.
+
+`mdpl()` takes the model, the trial and a *list* of observational data
+sets:
+
+``` r
+mdpl(model, data_exp, data_obs, treat = "A", target = NULL,
+     method = c("taylor", "elpd", "cv"), pooled = FALSE,
+     bootstrap_CI = FALSE, B = 500, family = gaussian(),
+     cate = TRUE, ate = TRUE, coef = TRUE)
+```
+
+- `model`: a formula (with `family` for non-Gaussian GLMs) or a
+  specification object (models vignette).
+- `data_exp`, `data_obs`: the trial and a named list of observational data sets;
+  treatment is a 0/1 column named by `treat`.
+- `target`: what the weights are judged on; default the whole parameter
+  vector, `"cate"` the treatment terms only.
+- `method`: `"taylor"` (fast, default), `"elpd"` or `"cv"` (weights
+  vignette).
+- `cate`, `ate`, `coef`: what to store in `fit$estimates` (default all);
+  `cate` can also be a data frame of covariate values.
+- `pooled`: one common weight for all sources.
+
+## A simulated example
+
+One trial ($n=300$) and three observational data sets ($n=1000$ each) with no, mild and
+strong unmeasured confounding. The true effect is
+$\tau(x) = 0.2 + 0.1x$.
+
+```{r sim}
+set.seed(1)
+sim <- function(n, bias = 0) {
+  X <- rnorm(n, 1); U <- rnorm(n)
+  A <- rbinom(n, 1, if (bias == 0) 0.5 else plogis(X - 1 + bias * U))
+  data.frame(X = X, A = A, Y = 0.5 + X + 0.2 * A + 0.1 * A * X + bias * U + rnorm(n))
+}
+trial <- sim(300)
+obs <- list(clean = sim(1000, 0), mild = sim(1000, 0.5), strong = sim(1000, 2))
+head(trial, 3)
+```
+
+## Fit
+
+`Y ~ A * X` lets the effect vary with `X`; `cate = nd` also stores the
+effect at `X` = 0, 1, 2. `bootstrap_CI = TRUE` refits and reselects the weights
+on `B` resamples, so the intervals below allow for choosing the weights.
+
+```{r fit}
+nd <- data.frame(X = c(0, 1, 2))
+fit <- mdpl(Y ~ A * X, trial, obs, treat = "A", cate = nd,
+            bootstrap_CI = TRUE, B = 500, boot_seed = 1)
+fit
+```
+
+## The weights
+
+`fit$eta` has a row per source and a column per *trace multiplier*.
+**`t2` (leave-one-out) is the default**; the more conservative `t1` is
+available with `trace = "t1"`. A weight near 1 pools the observational data with the
+trial, near 0 ignores it.
+
+```{r eta}
+round(fit$eta, 2)
+```
+
+## Estimates stored in the fit
+
+`fit$estimates` holds, at the `t2` weights, the coefficients (`coef`),
+the ATE over the trial covariates (`ate`), the CATE formula (`cate`)
+and, if given covariate values, the CATE there (`cate_at`).
+
+```{r stored}
+fit$estimates$coef
+fit$estimates$ate
+fit$estimates$cate
+fit$estimates$cate_at
+```
+
+The stored `cate` is a function; call it on covariates to predict the
+CATE with intervals (link scale, here the response scale).
+
+```{r cate-fn}
+fit$estimates$cate(data.frame(X = c(-1, 0, 3)))
+```
+
+Each can be set to `FALSE`. Models whose effect is not linear in the
+parameters have no CATE formula; use `mdpl_cate()` there. The functions
+below recompute these for other traces, scales, populations and levels.
+
+## CATE, ATE and coefficients
+
+```{r cate}
+cbind(nd, truth = 0.2 + 0.1 * nd$X, mdpl_cate(fit, nd)[, -1])
+mdpl_ate(fit)
+```
+
+`trace = "t1"` gives the more conservative weights.
+
+```{r t1}
+mdpl_ate(fit, trace = "t1")
+```
+
+`mdpl_ate()` averages the CATE over the trial covariates (or any data
+frame). The trial-only fit is `fit$rct`:
+
+```{r rct}
+rbind(trial_only = mdpl_ate(fit$rct, trial, treat = "A"),
+      mdpl = mdpl_ate(fit))
+```
+
+`mdpl_coef()` returns the fused treatment coefficients:
+
+```{r coef}
+mdpl_coef(fit)
+```
+
+```{r plot}
+g <- data.frame(X = seq(-1, 3, length.out = 41))
+a <- mdpl_cate(fit, g)
+b <- mdpl_cate(fit$rct, g, treat = "A")
+plot(NA, xlim = range(g$X), ylim = c(-0.5, 1), xlab = "X", ylab = "CATE")
+polygon(c(g$X, rev(g$X)), c(b$lower, rev(b$upper)), col = "#99999940", border = NA)
+polygon(c(g$X, rev(g$X)), c(a$lower, rev(a$upper)), col = "#0072B240", border = NA)
+lines(g$X, b$estimate, col = "grey40", lwd = 2)
+lines(g$X, a$estimate, col = "#0072B2", lwd = 2)
+abline(0.2, 0.1, lty = 2)
+legend("topleft", c("truth", "trial only", "MDPL"), lty = c(2, 1, 1), lwd = 2,
+       col = c("black", "grey40", "#0072B2"), bty = "n")
+```
+
+## Intervals and weights
+
+The intervals above are bootstrap intervals, which account for choosing the
+weights. Without `bootstrap_CI = TRUE` they are posterior intervals given the
+selected weights, which are narrower; `ci = "posterior"` gives those from this
+fit (see the intervals vignette).
+
+## Binary outcomes
+
+Switch the family. Effects are risk differences by default, or log odds
+ratios with `scale = "link"`.
+
+```{r binary}
+simb <- function(n, bias = 0) {
+  X <- rnorm(n); U <- rnorm(n)
+  A <- if (bias == 0) rbinom(n, 1, 0.5) else rbinom(n, 1, plogis(X + bias * U))
+  data.frame(X = X, A = A,
+             Y = rbinom(n, 1, plogis(-0.3 + 0.8 * A + 0.5 * X + 0.3 * A * X + bias * U)))
+}
+fb <- mdpl(Y ~ A * X, simb(500), list(simb(1500, 0), simb(1500, 1)),
+           treat = "A", family = binomial())
+fb$eta
+nd2 <- data.frame(X = c(-1, 0, 1))
+mdpl_cate(fb, nd2)                  # risk difference
+mdpl_cate(fb, nd2, scale = "link")  # log odds ratio
+mdpl_ate(fb)                        # standardised risk difference
+```
+
+The risk difference is nonlinear in the parameters, so its interval
+comes from posterior draws.
+
+## Where to go next
+
+- **Models** (`mdpl-models`): GLM families, `causl` frugal models, and
+  custom likelihoods.
+- **Weights** (`mdpl-weights`): how the weights are chosen, several
+  sources, `target`, and the Taylor, ELPD and cross-validation methods.
+- **Intervals** (`mdpl-intervals`): posterior and bootstrap intervals.
+- **Overlap** (`mdpl-overlap`): what happens when observational data cover different
+  covariates from the trial.
+- **Frugal CATE** (`mdpl-frugal-cate`): the copula model with `causl`.

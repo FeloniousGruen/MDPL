@@ -1,0 +1,177 @@
+---
+title: "Models in MDPL: GLMs, frugal copulas and your own likelihood"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Models in MDPL: GLMs, frugal copulas and your own likelihood}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+library(MDPL)
+have_causl <- requireNamespace("causl", quietly = TRUE)
+```
+
+## What MDPL needs from a model
+
+Every model reduces to an `mdpl_model` holding what the fusion uses:
+
+| ingredient | used for |
+|------------------------------------|------------------------------------|
+| parameter estimate `par` and information `OI` | the power posterior, the Taylor weight selection |
+| robust covariance `sandwich` (optional) | `robust = TRUE` |
+| per-row log-likelihood `loglik_mat(Theta)` | ELPD weight selection |
+| `effect()` / `contrast()` | CATE and ATE from the parameters |
+
+A model is **in scope** when it is a regular parametric likelihood: a finite-dimensional, identifiable parameter in the interior of its space, a log-likelihood that is smooth and available per row (or cluster), and the same parameterisation in every data set. A shift between sources is then a shift in the parameter, which the weights trade off.
+
+| supported now | `mdpl_glm(formula, family)`: Gaussian, binomial (logit/probit/cloglog), Poisson, Gamma |
+|------------------------------------|------------------------------------|
+|  | `mdpl_causl(formulas, family)`: Gaussian-copula frugal models |
+|  | `mdpl_custom(loglik, start, ...)`: any smooth likelihood you specify |
+| planned | parametric survival with censoring, piecewise-exponential, ordinal/multinomial, clustered data |
+| not supported | trees/forests/BART, lasso-type penalised fits, mixtures and latent classes, Cox partial likelihood, nonparametric models, parameters on a boundary. For these the normal approximation behind the fast route does not hold. |
+
+## GLMs
+
+```{r glm}
+spec <- mdpl_glm(Y ~ A * X, binomial())
+spec
+```
+
+The family is the only thing that changes between continuous, binary and count outcomes; the introductory vignette has a worked example.
+
+## Frugal copula models (`causl`)
+
+The *frugal parametrisation* writes the joint law as $p(c)\,p(z\mid c)\,p(x\mid z,c)\,q(y\mid do(x),c)$ with a copula tying the margins together. Here $c$ are baseline covariates (including any effect modifiers; they are conditioned on, not modelled), $z$ further pre-treatment variables, $x$ the treatment and $y$ the outcome. It has four blocks:
+
+1.  `Z`: the pre-treatment variables (nuisance; crude is fine),
+2.  `X`: the treatment model, which shares no parameters with the others and is left out of the fit,
+3.  `Y`: the outcome margin $q(y\mid do(x),c)$, whose `X` and `X:modifier` coefficients are the causal effect MDPL borrows on,
+4.  `cop`: the copula, which carries the confounding between `Z` and `Y`.
+
+You pass blocks 1, 3 and 4 as a flat list of formulas, with the copula last.
+
+```{r causl, eval = have_causl}
+set.seed(3)
+
+# Simulating the data (this uses causl's own generator, not MDPL)
+gen_formulas <- list(
+  Z ~ C1,                    # pre-treatment variable
+  list(X ~ 1, C1 ~ 1),       # treatment and baseline covariate
+  Y ~ X * C1,                # outcome margin
+  ~ 1                        # copula
+)
+gen_family <- list(1, c(5, 1), 1, 1)
+gen_pars <- list(
+  C1 = list(beta = 0, phi = 1),
+  Z = list(beta = c(0, 0.5), phi = 1),
+  X = list(beta = 0),
+  Y = list(beta = c(0.5, 0.8, 0.2, 0.3), phi = 1),
+  cop = list(beta = matrix(0.5, 1, 1))
+)
+d_trial <- causl::rfrugalParam(
+  n = 250,
+  formulas = gen_formulas,
+  family = gen_family,
+  pars = gen_pars
+)
+d_obs <- causl::rfrugalParam(
+  n = 800,
+  formulas = gen_formulas,
+  family = gen_family,
+  pars = gen_pars
+)
+
+# The MDPL specification: one formula and one family code per block
+spec <- mdpl_causl(
+  formulas = list(Z ~ C1, Y ~ X * C1, ~ 1),
+  family = c(1, 1, 1),
+  outcome = "Y",
+  kwd = "cop"
+)
+fit <- mdpl(
+  model = spec,
+  data_exp = d_trial,
+  data_obs = list(d_obs),
+  treat = "X"
+)
+fit
+mdpl_cate(fit, data.frame(C1 = c(-1, 0, 1)))
+mdpl_ate(fit)
+```
+
+Parameter names (`Y:X`, `Y:C1:X`, `Z:...`, `cop1:...`, `phi:...`) show their block in the raw parameter vectors; the treatment-effect tables (`mdpl_coef()`, `print(fit)`) drop the outcome prefix and report `X`, `C1:X` as in an ordinary regression.
+
+### What goes into each argument
+
+`mdpl_causl(formulas, family, outcome = "Y", kwd = "cop")` and the `mdpl()` call:
+
+| argument | what to put in it |
+|------------------------------------|------------------------------------|
+| `formulas` | A flat list in fitting order: one formula per modelled pre-treatment variable (`Z`), then the outcome, then the copula. |
+| `family` | Numeric codes, **one per formula including the copula**, in the same order. Margins: `1` Gaussian, `5` binary. The last entry is the copula family (`1` Gaussian). Default all Gaussian. |
+| `outcome` | The outcome variable, the left-hand side of one formula. Default `"Y"`. |
+| `kwd` | The keyword naming the copula parameters (`cop1:...`). Change it only if your data has a variable called `cop`. |
+| `treat` in `mdpl()` | The treatment column (here `"X"`), which appears on the right-hand side of the outcome formula. |
+
+What each formula should contain:
+
+- **`Z` formulas** (`Z ~ C1`). The left-hand side is a pre-treatment variable to model; the right-hand side is the baseline covariates it depends on. A covariate that appears only on a right-hand side (`C1`) is conditioned on. Use one formula per modelled variable, or none. These are nuisance models, so a simple form is fine.
+- **The outcome formula** (`Y ~ X * C1`). Its treatment coefficients are what MDPL fuses. Interact the treatment with every covariate that should modify the effect: the CATE is the `X` coefficient plus the `X:C1` coefficient times `C1`, as for a GLM. With `Y ~ X` the effect is the same for everyone. It is on the scale of the margin's linear predictor, a mean difference for a Gaussian outcome.
+- **The copula formula** (`~ 1`). It starts with `~` and has no left-hand side, and says how the dependence between the modelled variables varies with covariates. `~ 1` gives one constant parameter per pair of variables; `~ C1` lets it depend on `C1`. With one `Z` and the outcome there is one pair and any copula formula works. With two `Z` variables there are three pairs (`Z1`-`Z2`, `Z1`-`Y`, `Z2`-`Y`), and `causl` 0.10.4.9000 thenerrors unless the copula formula is `~ 1`
+
+The treatment model (`X ~ ...`) is not in `formulas`, since it does not affect the fusion. The data must still contain the treatment and every variable named in the formulas, with the same names in each data set.
+
+Parameters are named `block:term`; `treatment_terms()` lists the outcome's treatment terms, which `target = "cate"`, `coef` and the CATE formula use.
+
+```{r causl-names, eval = have_causl}
+names(fit$fit_exp$par)
+treatment_terms(fit$fit_exp, "X")
+fit$estimates$cate
+```
+
+The copula and `Z` parameters are also in the fitted vector, so with the default `target = NULL` an observational data set whose confounding or covariate distribution differs from the trial is down-weighted. `target = "cate"` scores only the outcome's treatment parameters; the others still adjust through their correlation.
+
+## Your own likelihood
+
+Give the log-likelihood of one row and a starting value; MDPL finds the estimate with `optim` and the information and sandwich by numerical derivatives. For the treatment effect give either `contrast` (effect linear in the parameters, exact intervals) or `effect` (any smooth function of one parameter vector). A logistic model written by hand:
+
+```{r custom}
+loglik <- function(theta, data) {
+  eta <- theta[1] + theta[2] * data$A + theta[3] * data$X + theta[4] * data$A * data$X
+  data$Y * eta - log1p(exp(eta))
+}
+spec <- mdpl_custom(
+  loglik, start = c(int = 0, A = 0, X = 0, AX = 0),
+  contrast = function(newdata, treat) cbind(0, 1, 0, newdata$X),   # log odds ratio at X
+  treatment_terms = function(treat) c("A", "AX"))
+
+set.seed(4)
+simb <- function(n, bias = 0) {
+  X <- rnorm(n); U <- rnorm(n)
+  A <- if (bias == 0) rbinom(n, 1, 0.5) else rbinom(n, 1, plogis(X + bias * U))
+  data.frame(X = X, A = A,
+             Y = rbinom(n, 1, plogis(-0.3 + 0.8 * A + 0.5 * X + 0.3 * A * X + bias * U)))
+}
+trial <- simb(400); obs <- simb(1200, 0.5)
+```
+
+If your likelihood is only available as a total (no per-row values), set `per_row = FALSE` and have `loglik` return the sum. The fit and `method = "taylor"` work as usual; there is then no sandwich (`robust = TRUE` is unavailable), and `method = "elpd"` is not possible, nor is `method = "cv"` unless you supply a `loss`.
+
+Before fusing, check the likelihood meets the method's conditions (finite per-row log-likelihood, zero gradient, well-conditioned information, model-based and robust errors agreeing, same parameters in every data set):
+
+```{r check}
+mdpl_check_model(spec, list(trial, obs))
+```
+
+Then use it like any other model:
+
+```{r custom-fit}
+fit <- mdpl(spec, trial, list(obs), treat = "A")
+fit$eta
+mdpl_cate(fit, data.frame(X = c(-1, 0, 1)))
+```
+
+If a likelihood fails the checks (a non-identifiable parameter, a boundary estimate, a non-smooth density), the normal approximation may not apply and the package may not be appropriate.

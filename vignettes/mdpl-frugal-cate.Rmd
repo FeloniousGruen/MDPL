@@ -1,0 +1,208 @@
+---
+title: "CATE with the frugal (copula) model"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{CATE with the frugal (copula) model}
+  %\VignetteEncoding{UTF-8}
+  %\VignetteEngine{knitr::rmarkdown}
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", fig.width = 6.5, fig.height = 4.2,
+                      fig.align = "center")
+library(MDPL)
+have_causl <- requireNamespace("causl", quietly = TRUE)
+knitr::opts_chunk$set(eval = have_causl)
+```
+
+```{r need-causl, eval = !have_causl, echo = FALSE, results = "asis"}
+cat("*This vignette needs the suggested package `causl`, which is not installed; the code is shown but not run.*")
+```
+
+This vignette fuses a trial with one observational data set to estimate
+a CATE, using the frugal parametrisation from `causl`.
+
+## The four blocks
+
+Let $C$ be baseline covariates (including effect modifiers), $Z$ further
+pre-treatment variables, $X$ the treatment and $Y$ the outcome. The
+frugal factorisation is
+
+$$p(c)\;p(z\mid c)\;p(x\mid z,c)\;q(y\mid do(x),c),
+\quad\text{with a copula linking } z \text{ and } y.$$
+
+The outcome margin $q(y\mid do(x),c)$ is the law of $Y$ under an
+intervention on $X$; its coefficients are the causal effect. For MDPL
+you supply three of the four blocks as one flat list of formulas:
+
+| block | models | what to put in it |
+|------------------------|------------------------|------------------------|
+| 1\. `Z` | pre-treatment variables $p(z\mid c)$ | one formula per variable, e.g. `Z ~ C1`. Nuisance: keep it simple. |
+| 2\. `X` | treatment and covariate margins | used to **generate** data only; left out of the fit. |
+| 3\. `Y` | the causal margin $q(y\mid do(x),c)$ | **the causal block.** `X`, interacted with each modifier the CATE depends on (`Y ~ X * C1`). No `Z` here. |
+| 4\. `cop` | dependence between the margins | a one-sided formula (`~ 1`, `~ X * C1`). Nuisance, but it does the adjustment for $Z$. |
+
+So the specification is
+
+```{r spec}
+spec <- mdpl_causl(
+  formulas = list(
+    Z ~ C1,        # block 1
+    Y ~ X * C1,    # block 3: CATE terms Y:X and Y:C1:X
+    ~ X * C1       # block 4
+  ),
+  family = c(1, 1, 1),
+  outcome = "Y",
+  kwd = "cop"
+)
+spec
+```
+
+and the CATE is the outcome margin's linear predictor at $X=1$ minus
+$X=0$, $\tau(c_1)=\beta_X+\beta_{X:C_1}c_1$. Only the outcome block
+enters it; the `Z` and copula blocks sharpen and de-bias those two
+coefficients. `family` is one code per formula (`1` Gaussian, `5`
+binary; the last is the copula).
+
+## A simulated example
+
+The trial ($n_e=250$) is randomised. The observational data ($n_o=1000$)
+are confounded by a binary $U$ that affects both treatment and outcome
+and is dropped before analysis. The true CATE is $\tau(c_1)=0.8+0.3c_1$.
+The generator needs all four blocks, including a treatment model.
+
+```{r sim}
+set.seed(11)
+n_e <- 250; n_o <- 1000
+family <- list(1, c(5, 1, 5), 1, 1)   # families for blocks Z, (X, C1, U), Y, copula
+
+forms_obs <- list(
+  Z ~ C1,
+  list(X ~ Z * C1 + U, C1 ~ 1, U ~ 1),
+  Y ~ X * C1 + U,
+  ~ X * C1
+)
+forms_exp <- forms_obs
+forms_exp[[2]][[1]] <- X ~ 1                      # randomised
+
+pars_obs <- list(
+  C1 = list(beta = 0, phi = 1),
+  U = list(beta = 0),
+  Z = list(beta = c(0.2, 0.6), phi = 1),
+  X = list(beta = c(0.5, 0.6, 0.1, 1, 0.4)),       # U drives treatment
+  Y = list(beta = c(0.6, 0.8, 0.2, 1, 0.3), phi = 2),
+  cop = list(beta = matrix(c(1, 2.5, 0, 0), nrow = 4))
+)
+pars_exp <- pars_obs; pars_exp$X <- list(beta = 0)
+
+d_o <- causl::rfrugalParam(
+  n = n_o,
+  formulas = forms_obs,
+  family = family,
+  pars = pars_obs
+)
+d_e <- causl::rfrugalParam(
+  n = n_e,
+  formulas = forms_exp,
+  family = family,
+  pars = pars_exp
+)
+d_o$U <- d_e$U <- NULL                            # U is not observed
+head(d_e, 3)
+```
+
+The analysis uses only `Z`, `C1`, `X` and `Y`.
+
+## MDPL Fitting
+
+```{r fit}
+system.time(
+  fit <- mdpl(
+    model = spec,
+    data_exp = d_e,
+    data_obs = list(obs = d_o),
+    treat = "X"
+  )
+)
+fit
+```
+
+This fits both data sets, chooses the weight and builds the posterior.
+The coefficients of the two fits:
+
+```{r pars}
+round(cbind(trial = fit$fit_exp$par, observational = fit$fit_obs[[1]]$par), 3)
+```
+
+`Y:X` and `Y:C1:X` are $\beta_X$ and $\beta_{X:C_1}$ (truth 0.8 and
+0.3). The rest (`Z:*`, `cop*`, `phi:*`) is nuisance. The weight is
+judged on all parameters by default; `target = "cate"` judges it on the
+two treatment-effect parameters only.
+
+## CATE and ATE
+
+The table compares three estimates of the CATE at $C_1=-1,0,1$: the
+trial alone (`fit$rct`), MDPL, and a pooled fit that takes the
+observational data at full weight (`eta = 1`). `mdpl_cate()` returns the
+estimate, standard error and interval for each, and `truth` is the known
+$0.8+0.3c_1$.
+
+```{r cate}
+g <- data.frame(C1 = c(-1, 0, 1))
+pooled <- mdpl_posterior(fit$fit_exp, fit$fit_obs, eta = 1, treat = "X")   # eta = 1
+tab <- rbind(
+  cbind(method = "trial only", mdpl_cate(fit$rct, g, treat = "X")),
+  cbind(method = "MDPL",       mdpl_cate(fit, g)),
+  cbind(method = "pooled",     mdpl_cate(pooled, g)))
+tab$truth <- 0.8 + 0.3 * tab$C1
+tab[, c("method", "C1", "estimate", "se", "lower", "upper", "truth")]
+```
+
+The plot draws the same three CATE curves over a grid of $C_1$ values,
+with intervals for the trial and MDPL (the pooled interval is omitted
+for legibility) and the true CATE dashed.
+
+```{r cate-plot}
+cg <- data.frame(C1 = seq(-2, 2, length.out = 41))
+cs <- list(trial = mdpl_cate(fit$rct, cg, treat = "X"),
+           mdpl = mdpl_cate(fit, cg),
+           pooled = mdpl_cate(pooled, cg))
+cols <- c(trial = "grey40", mdpl = "#0072B2", pooled = "#D55E00")
+plot(NA, xlim = c(-2, 2), ylim = c(-0.5, 2.2), xlab = expression(C[1]),
+     ylab = expression(tau(C[1])))
+for (nm in names(cs)) {
+  if (nm != "pooled")
+    polygon(c(cg$C1, rev(cg$C1)), c(cs[[nm]]$lower, rev(cs[[nm]]$upper)),
+            col = adjustcolor(cols[nm], 0.15), border = NA)
+  lines(cg$C1, cs[[nm]]$estimate, col = cols[nm], lwd = 2)
+}
+abline(0.8, 0.3, lty = 2, lwd = 2)
+legend("topleft", c("truth", "trial only", "MDPL", "pooled"),
+       col = c("black", cols), lty = c(2, 1, 1, 1), lwd = 2, bty = "n")
+```
+
+The ATE averages the CATE over the covariates of a data frame (by
+default the trial's). The code below gives it for the same three
+methods, then prints the true value over the trial covariates for
+comparison:
+
+```{r ate}
+rbind(`trial only` = mdpl_ate(fit$rct, d_e, treat = "X"),
+      MDPL = mdpl_ate(fit),
+      pooled = mdpl_ate(pooled, d_e))
+cat("true ATE over the trial covariates:", round(0.8 + 0.3 * mean(d_e$C1), 3), "\n")
+```
+
+Pooling (`eta = 1`) takes the observational estimates at face value;
+MDPL borrows only as much as the trial supports. The bootstrap
+(`bootstrap_CI = TRUE`, see the intervals vignette) refits both models
+per replicate, which with `causl` is slow.
+
+Note: if you have several observational data sets, pass a list of data
+frames; each gets its own weight and is fitted separately.
+
+Also, **`target = "cate"`** picks up every outcome-block coefficient
+involving `X`, including further modifiers.

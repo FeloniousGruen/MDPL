@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+<meta charset="utf-8" />
+<meta name="generator" content="pandoc" />
+<meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
+
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+
+
+<title>Intervals for MDPL estimates: posterior and bootstrap</title>
+
+<script>// Pandoc 2.9 adds attributes on both header and div. We remove the former (to
+// be compatible with the behavior of Pandoc < 2.8).
+document.addEventListener('DOMContentLoaded', function(e) {
+  var hs = document.querySelectorAll("div.section[class*='level'] > :first-child");
+  var i, h, a;
+  for (i = 0; i < hs.length; i++) {
+    h = hs[i];
+    if (!/^h[1-6]$/i.test(h.tagName)) continue;  // it should be a header h1-h6
+    a = h.attributes;
+    while (a.length > 0) h.removeAttribute(a[0].name);
+  }
+});
+</script>
+
+<style type="text/css">
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+span.underline{text-decoration: underline;}
+div.column{display: inline-block; vertical-align: top; width: 50%;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+</style>
+
+
+
+<style type="text/css">
+code {
+white-space: pre;
+}
+.sourceCode {
+overflow: visible;
+}
+</style>
+<style type="text/css" data-origin="pandoc">
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+{ counter-reset: source-line 0; }
+pre.numberSource code > span
+{ position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+{ content: counter(source-line);
+position: relative; left: -1em; text-align: right; vertical-align: baseline;
+border: none; display: inline-block;
+-webkit-touch-callout: none; -webkit-user-select: none;
+-khtml-user-select: none; -moz-user-select: none;
+-ms-user-select: none; user-select: none;
+padding: 0 4px; width: 4em;
+color: #aaaaaa;
+}
+pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa; padding-left: 4px; }
+div.sourceCode
+{ }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+code span.al { color: #ff0000; font-weight: bold; } 
+code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.at { color: #7d9029; } 
+code span.bn { color: #40a070; } 
+code span.bu { color: #008000; } 
+code span.cf { color: #007020; font-weight: bold; } 
+code span.ch { color: #4070a0; } 
+code span.cn { color: #880000; } 
+code span.co { color: #60a0b0; font-style: italic; } 
+code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.do { color: #ba2121; font-style: italic; } 
+code span.dt { color: #902000; } 
+code span.dv { color: #40a070; } 
+code span.er { color: #ff0000; font-weight: bold; } 
+code span.ex { } 
+code span.fl { color: #40a070; } 
+code span.fu { color: #06287e; } 
+code span.im { color: #008000; font-weight: bold; } 
+code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.kw { color: #007020; font-weight: bold; } 
+code span.op { color: #666666; } 
+code span.ot { color: #007020; } 
+code span.pp { color: #bc7a00; } 
+code span.sc { color: #4070a0; } 
+code span.ss { color: #bb6688; } 
+code span.st { color: #4070a0; } 
+code span.va { color: #19177c; } 
+code span.vs { color: #4070a0; } 
+code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } 
+</style>
+<script>
+// apply pandoc div.sourceCode style to pre.sourceCode instead
+(function() {
+  var sheets = document.styleSheets;
+  for (var i = 0; i < sheets.length; i++) {
+    if (sheets[i].ownerNode.dataset["origin"] !== "pandoc") continue;
+    try { var rules = sheets[i].cssRules; } catch (e) { continue; }
+    var j = 0;
+    while (j < rules.length) {
+      var rule = rules[j];
+      // check if there is a div.sourceCode rule
+      if (rule.type !== rule.STYLE_RULE || rule.selectorText !== "div.sourceCode") {
+        j++;
+        continue;
+      }
+      var style = rule.style.cssText;
+      // check if color or background-color is set
+      if (rule.style.color === '' && rule.style.backgroundColor === '') {
+        j++;
+        continue;
+      }
+      // replace div.sourceCode by a pre.sourceCode rule
+      sheets[i].deleteRule(j);
+      sheets[i].insertRule('pre.sourceCode{' + style + '}', j);
+    }
+  }
+})();
+</script>
+
+
+
+
+<style type="text/css">body {
+background-color: #fff;
+margin: 1em auto;
+max-width: 700px;
+overflow: visible;
+padding-left: 2em;
+padding-right: 2em;
+font-family: "Open Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+font-size: 14px;
+line-height: 1.35;
+}
+#TOC {
+clear: both;
+margin: 0 0 10px 10px;
+padding: 4px;
+width: 400px;
+border: 1px solid #CCCCCC;
+border-radius: 5px;
+background-color: #f6f6f6;
+font-size: 13px;
+line-height: 1.3;
+}
+#TOC .toctitle {
+font-weight: bold;
+font-size: 15px;
+margin-left: 5px;
+}
+#TOC ul {
+padding-left: 40px;
+margin-left: -1.5em;
+margin-top: 5px;
+margin-bottom: 5px;
+}
+#TOC ul ul {
+margin-left: -2em;
+}
+#TOC li {
+line-height: 16px;
+}
+table {
+margin: 1em auto;
+border-width: 1px;
+border-color: #DDDDDD;
+border-style: outset;
+border-collapse: collapse;
+}
+table th {
+border-width: 2px;
+padding: 5px;
+border-style: inset;
+}
+table td {
+border-width: 1px;
+border-style: inset;
+line-height: 18px;
+padding: 5px 5px;
+}
+table, table th, table td {
+border-left-style: none;
+border-right-style: none;
+}
+table thead, table tr.even {
+background-color: #f7f7f7;
+}
+p {
+margin: 0.5em 0;
+}
+blockquote {
+background-color: #f6f6f6;
+padding: 0.25em 0.75em;
+}
+hr {
+border-style: solid;
+border: none;
+border-top: 1px solid #777;
+margin: 28px 0;
+}
+dl {
+margin-left: 0;
+}
+dl dd {
+margin-bottom: 13px;
+margin-left: 13px;
+}
+dl dt {
+font-weight: bold;
+}
+ul {
+margin-top: 0;
+}
+ul li {
+list-style: circle outside;
+}
+ul ul {
+margin-bottom: 0;
+}
+pre, code {
+background-color: #f7f7f7;
+border-radius: 3px;
+color: #333;
+white-space: pre-wrap; 
+}
+pre {
+border-radius: 3px;
+margin: 5px 0px 10px 0px;
+padding: 10px;
+}
+pre:not([class]) {
+background-color: #f7f7f7;
+}
+code {
+font-family: Consolas, Monaco, 'Courier New', monospace;
+font-size: 85%;
+}
+p > code, li > code {
+padding: 2px 0px;
+}
+div.figure {
+text-align: center;
+}
+img {
+background-color: #FFFFFF;
+padding: 2px;
+border: 1px solid #DDDDDD;
+border-radius: 3px;
+border: 1px solid #CCCCCC;
+margin: 0 5px;
+}
+h1 {
+margin-top: 0;
+font-size: 35px;
+line-height: 40px;
+}
+h2 {
+border-bottom: 4px solid #f7f7f7;
+padding-top: 10px;
+padding-bottom: 2px;
+font-size: 145%;
+}
+h3 {
+border-bottom: 2px solid #f7f7f7;
+padding-top: 10px;
+font-size: 120%;
+}
+h4 {
+border-bottom: 1px solid #f7f7f7;
+margin-left: 8px;
+font-size: 105%;
+}
+h5, h6 {
+border-bottom: 1px solid #ccc;
+font-size: 105%;
+}
+a {
+color: #0033dd;
+text-decoration: none;
+}
+a:hover {
+color: #6666ff; }
+a:visited {
+color: #800080; }
+a:visited:hover {
+color: #BB00BB; }
+a[href^="http:"] {
+text-decoration: underline; }
+a[href^="https:"] {
+text-decoration: underline; }
+
+code > span.kw { color: #555; font-weight: bold; } 
+code > span.dt { color: #902000; } 
+code > span.dv { color: #40a070; } 
+code > span.bn { color: #d14; } 
+code > span.fl { color: #d14; } 
+code > span.ch { color: #d14; } 
+code > span.st { color: #d14; } 
+code > span.co { color: #888888; font-style: italic; } 
+code > span.ot { color: #007020; } 
+code > span.al { color: #ff0000; font-weight: bold; } 
+code > span.fu { color: #900; font-weight: bold; } 
+code > span.er { color: #a61717; background-color: #e3d2d2; } 
+</style>
+
+
+
+
+</head>
+
+<body>
+
+
+
+
+<h1 class="title toc-ignore">Intervals for MDPL estimates: posterior and
+bootstrap</h1>
+
+
+
+<div id="two-kinds-of-interval" class="section level2">
+<h2>Two kinds of interval</h2>
+<p><code>mdpl_cate()</code>, <code>mdpl_ate()</code> and
+<code>mdpl_coef()</code> return one of two kinds of interval.</p>
+<ul>
+<li><strong>Posterior</strong> (the default for a plain fit): the normal
+power posterior <em>given the selected weights</em>. It is instant.</li>
+<li><strong>Bootstrap</strong> (<code>bootstrap_CI = TRUE</code>):
+resample the data, refit every model, <strong>reselect the
+weights</strong> and recompute the effect. It costs about <code>B</code>
+fits.</li>
+</ul>
+<p>The weights are chosen from the trial data, but the posterior treats
+them as fixed. The two can be close when a source is clearly clean or
+clearly useless, since the weight is then stable. They often
+paritcularly differ when a source is only moderately informative and the
+weight varies from trial to trial.</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" tabindex="-1"></a>sim <span class="ot">&lt;-</span> <span class="cf">function</span>(n, <span class="at">bias =</span> <span class="dv">0</span>) {</span>
+<span id="cb1-2"><a href="#cb1-2" tabindex="-1"></a>  X <span class="ot">&lt;-</span> <span class="fu">rnorm</span>(n, <span class="dv">1</span>); U <span class="ot">&lt;-</span> <span class="fu">rnorm</span>(n)</span>
+<span id="cb1-3"><a href="#cb1-3" tabindex="-1"></a>  A <span class="ot">&lt;-</span> <span class="fu">rbinom</span>(n, <span class="dv">1</span>, <span class="cf">if</span> (bias <span class="sc">==</span> <span class="dv">0</span>) <span class="fl">0.5</span> <span class="cf">else</span> <span class="fu">plogis</span>(X <span class="sc">-</span> <span class="dv">1</span> <span class="sc">+</span> bias <span class="sc">*</span> U))</span>
+<span id="cb1-4"><a href="#cb1-4" tabindex="-1"></a>  <span class="fu">data.frame</span>(<span class="at">X =</span> X, <span class="at">A =</span> A, <span class="at">Y =</span> <span class="fl">0.5</span> <span class="sc">+</span> X <span class="sc">+</span> <span class="fl">0.2</span> <span class="sc">*</span> A <span class="sc">+</span> <span class="fl">0.1</span> <span class="sc">*</span> A <span class="sc">*</span> X <span class="sc">+</span> bias <span class="sc">*</span> U <span class="sc">+</span> <span class="fu">rnorm</span>(n))</span>
+<span id="cb1-5"><a href="#cb1-5" tabindex="-1"></a>}</span>
+<span id="cb1-6"><a href="#cb1-6" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">11</span>)</span>
+<span id="cb1-7"><a href="#cb1-7" tabindex="-1"></a>trial <span class="ot">&lt;-</span> <span class="fu">sim</span>(<span class="dv">300</span>); obs <span class="ot">&lt;-</span> <span class="fu">list</span>(<span class="at">src =</span> <span class="fu">sim</span>(<span class="dv">1000</span>, <span class="fl">0.5</span>))   <span class="co"># moderately confounded</span></span>
+<span id="cb1-8"><a href="#cb1-8" tabindex="-1"></a>nd <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(<span class="at">X =</span> <span class="fu">c</span>(<span class="dv">0</span>, <span class="dv">1</span>, <span class="dv">2</span>))                       <span class="co"># truth: 0.2 + 0.1 X</span></span></code></pre></div>
+</div>
+<div id="switching-the-bootstrap-on" class="section level2">
+<h2>Switching the bootstrap on</h2>
+<p>It is an argument of the fitting call, off by default.</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" tabindex="-1"></a><span class="fu">system.time</span>(</span>
+<span id="cb2-2"><a href="#cb2-2" tabindex="-1"></a>  fit <span class="ot">&lt;-</span> <span class="fu">mdpl</span>(Y <span class="sc">~</span> A <span class="sc">*</span> X, trial, obs, <span class="at">treat =</span> <span class="st">&quot;A&quot;</span>, <span class="at">bootstrap_CI =</span> <span class="cn">TRUE</span>, <span class="at">B =</span> <span class="dv">100</span>,</span>
+<span id="cb2-3"><a href="#cb2-3" tabindex="-1"></a>              <span class="at">boot_seed =</span> <span class="dv">1</span>)</span>
+<span id="cb2-4"><a href="#cb2-4" tabindex="-1"></a>)</span>
+<span id="cb2-5"><a href="#cb2-5" tabindex="-1"></a><span class="co">#&gt;    user  system elapsed </span></span>
+<span id="cb2-6"><a href="#cb2-6" tabindex="-1"></a><span class="co">#&gt;   0.486   1.045   0.384</span></span>
+<span id="cb2-7"><a href="#cb2-7" tabindex="-1"></a>fit</span>
+<span id="cb2-8"><a href="#cb2-8" tabindex="-1"></a><span class="co">#&gt; MDPL fit (GLM, gaussian(identity): Y ~ A * X)</span></span>
+<span id="cb2-9"><a href="#cb2-9" tabindex="-1"></a><span class="co">#&gt; 1 observational source(s); weights chosen by taylor; scored on all parameters</span></span>
+<span id="cb2-10"><a href="#cb2-10" tabindex="-1"></a><span class="co">#&gt; Borrowing weights eta (t2 is the default; t1 is more conservative):</span></span>
+<span id="cb2-11"><a href="#cb2-11" tabindex="-1"></a><span class="co">#&gt;       t1    t2</span></span>
+<span id="cb2-12"><a href="#cb2-12" tabindex="-1"></a><span class="co">#&gt; src 0.04 0.098</span></span>
+<span id="cb2-13"><a href="#cb2-13" tabindex="-1"></a><span class="co">#&gt; Treatment-effect coefficients (t2):</span></span>
+<span id="cb2-14"><a href="#cb2-14" tabindex="-1"></a><span class="co">#&gt;  term estimate    se   lower upper</span></span>
+<span id="cb2-15"><a href="#cb2-15" tabindex="-1"></a><span class="co">#&gt;     A   0.2775 0.139  0.0249 0.471</span></span>
+<span id="cb2-16"><a href="#cb2-16" tabindex="-1"></a><span class="co">#&gt;   A:X   0.0475 0.104 -0.1805 0.233</span></span>
+<span id="cb2-17"><a href="#cb2-17" tabindex="-1"></a><span class="co">#&gt; ATE:</span></span>
+<span id="cb2-18"><a href="#cb2-18" tabindex="-1"></a><span class="co">#&gt;  estimate    se  lower upper</span></span>
+<span id="cb2-19"><a href="#cb2-19" tabindex="-1"></a><span class="co">#&gt;     0.324 0.118 0.0565 0.521</span></span>
+<span id="cb2-20"><a href="#cb2-20" tabindex="-1"></a><span class="co">#&gt; CATE = 0.278 + 0.0475*X</span></span>
+<span id="cb2-21"><a href="#cb2-21" tabindex="-1"></a><span class="co">#&gt; Bootstrap intervals stored (B = 100)</span></span></code></pre></div>
+<p>Once replicates are stored, the effect functions and the stored
+coefficients and ATE (<code>fit$estimates</code>) use them. The stored
+CATE formula uses the posterior; call <code>mdpl_cate()</code> for
+bootstrap intervals at covariate values. Choose the kind with
+<code>ci</code>:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" tabindex="-1"></a>post <span class="ot">&lt;-</span> <span class="fu">mdpl_cate</span>(fit, nd, <span class="at">ci =</span> <span class="st">&quot;posterior&quot;</span>)</span>
+<span id="cb3-2"><a href="#cb3-2" tabindex="-1"></a>boot <span class="ot">&lt;-</span> <span class="fu">mdpl_cate</span>(fit, nd)               <span class="co"># ci = &quot;auto&quot; -&gt; bootstrap</span></span>
+<span id="cb3-3"><a href="#cb3-3" tabindex="-1"></a><span class="fu">data.frame</span>(<span class="at">X =</span> nd<span class="sc">$</span>X, <span class="at">estimate =</span> boot<span class="sc">$</span>estimate,</span>
+<span id="cb3-4"><a href="#cb3-4" tabindex="-1"></a>           <span class="at">post_width =</span> post<span class="sc">$</span>upper <span class="sc">-</span> post<span class="sc">$</span>lower,</span>
+<span id="cb3-5"><a href="#cb3-5" tabindex="-1"></a>           <span class="at">boot_width =</span> boot<span class="sc">$</span>upper <span class="sc">-</span> boot<span class="sc">$</span>lower)</span>
+<span id="cb3-6"><a href="#cb3-6" tabindex="-1"></a><span class="co">#&gt;   X  estimate post_width boot_width</span></span>
+<span id="cb3-7"><a href="#cb3-7" tabindex="-1"></a><span class="co">#&gt; 1 0 0.2775113  0.5760822  0.4460388</span></span>
+<span id="cb3-8"><a href="#cb3-8" tabindex="-1"></a><span class="co">#&gt; 2 1 0.3249944  0.4045596  0.4656602</span></span>
+<span id="cb3-9"><a href="#cb3-9" tabindex="-1"></a><span class="co">#&gt; 3 2 0.3724774  0.5939560  0.6642701</span></span></code></pre></div>
+<p>The point estimate is the same; the bootstrap <code>se</code> is the
+standard deviation of the replicates. Percentile endpoints generally
+need more replicates (100 here to build quickly). With fewer,
+<code>interval = &quot;normal&quot;</code> (estimate <span class="math inline">\(\pm\)</span> 1.96 bootstrap standard errors) can
+be steadier:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" tabindex="-1"></a><span class="fu">mdpl_cate</span>(fit, nd, <span class="at">interval =</span> <span class="st">&quot;normal&quot;</span>)</span>
+<span id="cb4-2"><a href="#cb4-2" tabindex="-1"></a><span class="co">#&gt;   X  estimate        se       lower     upper</span></span>
+<span id="cb4-3"><a href="#cb4-3" tabindex="-1"></a><span class="co">#&gt; 1 0 0.2775113 0.1391305 0.004820459 0.5502021</span></span>
+<span id="cb4-4"><a href="#cb4-4" tabindex="-1"></a><span class="co">#&gt; 2 1 0.3249944 0.1187320 0.092283836 0.5577049</span></span>
+<span id="cb4-5"><a href="#cb4-5" tabindex="-1"></a><span class="co">#&gt; 3 2 0.3724774 0.1743261 0.030804503 0.7141504</span></span></code></pre></div>
+<p>For a fit made without the bootstrap, <code>mdpl_cate_boot()</code>,
+<code>mdpl_ate_boot()</code> and <code>mdpl_coef_boot()</code> run one
+on demand (<code>B = 500</code> by default).</p>
+</div>
+<div id="what-is-stored" class="section level2">
+<h2>What is stored</h2>
+<p><code>fit$boot$draws</code> is a <code>B x p x traces</code> array of
+the fused parameters across replicates (traces <code>t1</code> and
+<code>t2</code>, default <code>t2</code>). Any function of the
+parameters can be summarised from it:</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" tabindex="-1"></a>dr <span class="ot">&lt;-</span> fit<span class="sc">$</span>boot<span class="sc">$</span>draws[, <span class="fu">c</span>(<span class="st">&quot;A&quot;</span>, <span class="st">&quot;A:X&quot;</span>), <span class="st">&quot;t2&quot;</span>]</span>
+<span id="cb5-2"><a href="#cb5-2" tabindex="-1"></a><span class="fu">head</span>(<span class="fu">round</span>(dr, <span class="dv">2</span>), <span class="dv">3</span>)</span>
+<span id="cb5-3"><a href="#cb5-3" tabindex="-1"></a><span class="co">#&gt;         A  A:X</span></span>
+<span id="cb5-4"><a href="#cb5-4" tabindex="-1"></a><span class="co">#&gt; [1,] 0.29 0.19</span></span>
+<span id="cb5-5"><a href="#cb5-5" tabindex="-1"></a><span class="co">#&gt; [2,] 0.20 0.08</span></span>
+<span id="cb5-6"><a href="#cb5-6" tabindex="-1"></a><span class="co">#&gt; [3,] 0.35 0.12</span></span>
+<span id="cb5-7"><a href="#cb5-7" tabindex="-1"></a><span class="fu">hist</span>(dr[, <span class="st">&quot;A&quot;</span>] <span class="sc">+</span> <span class="dv">1</span> <span class="sc">*</span> dr[, <span class="st">&quot;A:X&quot;</span>], <span class="at">breaks =</span> <span class="dv">25</span>, <span class="at">main =</span> <span class="st">&quot;&quot;</span>,</span>
+<span id="cb5-8"><a href="#cb5-8" tabindex="-1"></a>     <span class="at">xlab =</span> <span class="st">&quot;bootstrap CATE at X = 1&quot;</span>)</span>
+<span id="cb5-9"><a href="#cb5-9" tabindex="-1"></a><span class="fu">abline</span>(<span class="at">v =</span> <span class="fl">0.3</span>, <span class="at">lty =</span> <span class="dv">2</span>)</span></code></pre></div>
+<p><img role="img" src="data:image/png;base64,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" /><!-- --></p>
+<p>The spread includes the weight changing between replicates, which the
+posterior interval, with its fixed weight, cannot see.</p>
+</div>
+<div id="effects-that-are-not-linear-in-the-parameters" class="section level2">
+<h2>Effects that are not linear in the parameters</h2>
+<p>With a non-identity link the response-scale effect (the risk
+difference for a logistic model) is nonlinear in the parameters. The
+bootstrap maps each replicate through the effect; the posterior route
+uses normal posterior draws.</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" tabindex="-1"></a>simb <span class="ot">&lt;-</span> <span class="cf">function</span>(n, <span class="at">bias =</span> <span class="dv">0</span>) {</span>
+<span id="cb6-2"><a href="#cb6-2" tabindex="-1"></a>  X <span class="ot">&lt;-</span> <span class="fu">rnorm</span>(n); U <span class="ot">&lt;-</span> <span class="fu">rnorm</span>(n)</span>
+<span id="cb6-3"><a href="#cb6-3" tabindex="-1"></a>  A <span class="ot">&lt;-</span> <span class="cf">if</span> (bias <span class="sc">==</span> <span class="dv">0</span>) <span class="fu">rbinom</span>(n, <span class="dv">1</span>, <span class="fl">0.5</span>) <span class="cf">else</span> <span class="fu">rbinom</span>(n, <span class="dv">1</span>, <span class="fu">plogis</span>(X <span class="sc">+</span> bias <span class="sc">*</span> U))</span>
+<span id="cb6-4"><a href="#cb6-4" tabindex="-1"></a>  <span class="fu">data.frame</span>(<span class="at">X =</span> X, <span class="at">A =</span> A,</span>
+<span id="cb6-5"><a href="#cb6-5" tabindex="-1"></a>             <span class="at">Y =</span> <span class="fu">rbinom</span>(n, <span class="dv">1</span>, <span class="fu">plogis</span>(<span class="sc">-</span><span class="fl">0.3</span> <span class="sc">+</span> <span class="fl">0.8</span> <span class="sc">*</span> A <span class="sc">+</span> <span class="fl">0.5</span> <span class="sc">*</span> X <span class="sc">+</span> <span class="fl">0.3</span> <span class="sc">*</span> A <span class="sc">*</span> X <span class="sc">+</span> bias <span class="sc">*</span> U)))</span>
+<span id="cb6-6"><a href="#cb6-6" tabindex="-1"></a>}</span>
+<span id="cb6-7"><a href="#cb6-7" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">12</span>)</span>
+<span id="cb6-8"><a href="#cb6-8" tabindex="-1"></a>fb <span class="ot">&lt;-</span> <span class="fu">mdpl</span>(Y <span class="sc">~</span> A <span class="sc">*</span> X, <span class="fu">simb</span>(<span class="dv">500</span>), <span class="fu">list</span>(<span class="fu">simb</span>(<span class="dv">1500</span>, <span class="dv">1</span>)), <span class="at">treat =</span> <span class="st">&quot;A&quot;</span>, <span class="at">family =</span> <span class="fu">binomial</span>(),</span>
+<span id="cb6-9"><a href="#cb6-9" tabindex="-1"></a>           <span class="at">bootstrap_CI =</span> <span class="cn">TRUE</span>, <span class="at">B =</span> <span class="dv">100</span>, <span class="at">boot_seed =</span> <span class="dv">1</span>)</span>
+<span id="cb6-10"><a href="#cb6-10" tabindex="-1"></a>nd2 <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(<span class="at">X =</span> <span class="fu">c</span>(<span class="sc">-</span><span class="dv">1</span>, <span class="dv">0</span>, <span class="dv">1</span>))</span>
+<span id="cb6-11"><a href="#cb6-11" tabindex="-1"></a><span class="fu">mdpl_cate</span>(fb, nd2)                       <span class="co"># risk difference, bootstrap</span></span>
+<span id="cb6-12"><a href="#cb6-12" tabindex="-1"></a><span class="co">#&gt;    X   estimate         se      lower     upper</span></span>
+<span id="cb6-13"><a href="#cb6-13" tabindex="-1"></a><span class="co">#&gt; 1 -1 0.05919177 0.07336847 -0.1170648 0.1847551</span></span>
+<span id="cb6-14"><a href="#cb6-14" tabindex="-1"></a><span class="co">#&gt; 2  0 0.24373586 0.03968275  0.1837193 0.3120702</span></span>
+<span id="cb6-15"><a href="#cb6-15" tabindex="-1"></a><span class="co">#&gt; 3  1 0.35208616 0.04667146  0.2686762 0.4367298</span></span>
+<span id="cb6-16"><a href="#cb6-16" tabindex="-1"></a><span class="fu">mdpl_cate</span>(fb, nd2, <span class="at">ci =</span> <span class="st">&quot;posterior&quot;</span>)     <span class="co"># risk difference, posterior</span></span>
+<span id="cb6-17"><a href="#cb6-17" tabindex="-1"></a><span class="co">#&gt;    X   estimate         se       lower     upper</span></span>
+<span id="cb6-18"><a href="#cb6-18" tabindex="-1"></a><span class="co">#&gt; 1 -1 0.05919177 0.06051173 -0.05811877 0.1818476</span></span>
+<span id="cb6-19"><a href="#cb6-19" tabindex="-1"></a><span class="co">#&gt; 2  0 0.24373586 0.04193455  0.15867126 0.3244104</span></span>
+<span id="cb6-20"><a href="#cb6-20" tabindex="-1"></a><span class="co">#&gt; 3  1 0.35208616 0.05085089  0.24717803 0.4461980</span></span>
+<span id="cb6-21"><a href="#cb6-21" tabindex="-1"></a><span class="fu">mdpl_ate</span>(fb)</span>
+<span id="cb6-22"><a href="#cb6-22" tabindex="-1"></a><span class="co">#&gt;    estimate         se     lower     upper</span></span>
+<span id="cb6-23"><a href="#cb6-23" tabindex="-1"></a><span class="co">#&gt; 1 0.2150044 0.03807161 0.1475373 0.2922894</span></span></code></pre></div>
+</div>
+<div id="what-the-ate-is-averaged-over" class="section level2">
+<h2>What the ATE is averaged over</h2>
+<p><code>mdpl_ate()</code> averages the CATE over the covariates of a
+data frame, by default the trial’s, held fixed in every replicate. Pass
+another population’s covariates as <code>data</code>:</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" tabindex="-1"></a><span class="fu">mdpl_ate</span>(fit, <span class="at">data =</span> <span class="fu">data.frame</span>(<span class="at">X =</span> <span class="fu">c</span>(<span class="fl">1.5</span>, <span class="dv">2</span>, <span class="fl">2.5</span>)))</span>
+<span id="cb7-2"><a href="#cb7-2" tabindex="-1"></a><span class="co">#&gt;    estimate        se        lower     upper</span></span>
+<span id="cb7-3"><a href="#cb7-3" tabindex="-1"></a><span class="co">#&gt; 1 0.3724774 0.1743261 -0.009846219 0.6544239</span></span></code></pre></div>
+</div>
+<div id="note-on-interval-choice" class="section level2">
+<h2>Note on interval choice</h2>
+<p>Posterior intervals can be useful for exploration but bootstrap
+intervals more fully account for the true uncertainty of the method. A
+bootstrap interval much wider than the posterior one suggests unstable
+weights.</p>
+</div>
+
+
+
+<!-- code folding -->
+
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>

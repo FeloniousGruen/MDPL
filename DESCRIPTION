@@ -1,0 +1,21 @@
+Package: MDPL
+Title: Multi-Source Data Fusion via Power Likelihoods
+Version: 0.1.0
+Authors@R: 
+    c(person("Xi", "Lin", , "xi.lin@stats.ox.ac.uk", role = c("aut", "cre")),
+      person("Robin", "Evans", , "evans@stats.ox.ac.uk", role = "aut"))
+Description: Combines a randomised trial with one or several observational
+    data sources through power likelihoods. The weight given to each source is
+    chosen from the trial data itself, so that biased sources are down-weighted.
+    Works with generalised linear models, with copula-based frugal models from
+    the 'causl' package, and with user-supplied smooth likelihoods, and
+    returns conditional and average treatment effects with bootstrap intervals.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.2
+Depends: R (>= 4.0.0)
+Imports: stats, numDeriv
+Suggests: causl, sandwich, knitr, rmarkdown, testthat (>= 3.0.0)
+VignetteBuilder: knitr
+Config/testthat/edition: 3

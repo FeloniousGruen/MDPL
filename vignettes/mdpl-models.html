@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+<meta charset="utf-8" />
+<meta name="generator" content="pandoc" />
+<meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
+
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+
+
+<title>Models in MDPL: GLMs, frugal copulas and your own likelihood</title>
+
+<script>// Pandoc 2.9 adds attributes on both header and div. We remove the former (to
+// be compatible with the behavior of Pandoc < 2.8).
+document.addEventListener('DOMContentLoaded', function(e) {
+  var hs = document.querySelectorAll("div.section[class*='level'] > :first-child");
+  var i, h, a;
+  for (i = 0; i < hs.length; i++) {
+    h = hs[i];
+    if (!/^h[1-6]$/i.test(h.tagName)) continue;  // it should be a header h1-h6
+    a = h.attributes;
+    while (a.length > 0) h.removeAttribute(a[0].name);
+  }
+});
+</script>
+
+<style type="text/css">
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+span.underline{text-decoration: underline;}
+div.column{display: inline-block; vertical-align: top; width: 50%;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+</style>
+
+
+
+<style type="text/css">
+code {
+white-space: pre;
+}
+.sourceCode {
+overflow: visible;
+}
+</style>
+<style type="text/css" data-origin="pandoc">
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+{ counter-reset: source-line 0; }
+pre.numberSource code > span
+{ position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+{ content: counter(source-line);
+position: relative; left: -1em; text-align: right; vertical-align: baseline;
+border: none; display: inline-block;
+-webkit-touch-callout: none; -webkit-user-select: none;
+-khtml-user-select: none; -moz-user-select: none;
+-ms-user-select: none; user-select: none;
+padding: 0 4px; width: 4em;
+color: #aaaaaa;
+}
+pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa; padding-left: 4px; }
+div.sourceCode
+{ }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+code span.al { color: #ff0000; font-weight: bold; } 
+code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.at { color: #7d9029; } 
+code span.bn { color: #40a070; } 
+code span.bu { color: #008000; } 
+code span.cf { color: #007020; font-weight: bold; } 
+code span.ch { color: #4070a0; } 
+code span.cn { color: #880000; } 
+code span.co { color: #60a0b0; font-style: italic; } 
+code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.do { color: #ba2121; font-style: italic; } 
+code span.dt { color: #902000; } 
+code span.dv { color: #40a070; } 
+code span.er { color: #ff0000; font-weight: bold; } 
+code span.ex { } 
+code span.fl { color: #40a070; } 
+code span.fu { color: #06287e; } 
+code span.im { color: #008000; font-weight: bold; } 
+code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.kw { color: #007020; font-weight: bold; } 
+code span.op { color: #666666; } 
+code span.ot { color: #007020; } 
+code span.pp { color: #bc7a00; } 
+code span.sc { color: #4070a0; } 
+code span.ss { color: #bb6688; } 
+code span.st { color: #4070a0; } 
+code span.va { color: #19177c; } 
+code span.vs { color: #4070a0; } 
+code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } 
+</style>
+<script>
+// apply pandoc div.sourceCode style to pre.sourceCode instead
+(function() {
+  var sheets = document.styleSheets;
+  for (var i = 0; i < sheets.length; i++) {
+    if (sheets[i].ownerNode.dataset["origin"] !== "pandoc") continue;
+    try { var rules = sheets[i].cssRules; } catch (e) { continue; }
+    var j = 0;
+    while (j < rules.length) {
+      var rule = rules[j];
+      // check if there is a div.sourceCode rule
+      if (rule.type !== rule.STYLE_RULE || rule.selectorText !== "div.sourceCode") {
+        j++;
+        continue;
+      }
+      var style = rule.style.cssText;
+      // check if color or background-color is set
+      if (rule.style.color === '' && rule.style.backgroundColor === '') {
+        j++;
+        continue;
+      }
+      // replace div.sourceCode by a pre.sourceCode rule
+      sheets[i].deleteRule(j);
+      sheets[i].insertRule('pre.sourceCode{' + style + '}', j);
+    }
+  }
+})();
+</script>
+
+
+
+
+<style type="text/css">body {
+background-color: #fff;
+margin: 1em auto;
+max-width: 700px;
+overflow: visible;
+padding-left: 2em;
+padding-right: 2em;
+font-family: "Open Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+font-size: 14px;
+line-height: 1.35;
+}
+#TOC {
+clear: both;
+margin: 0 0 10px 10px;
+padding: 4px;
+width: 400px;
+border: 1px solid #CCCCCC;
+border-radius: 5px;
+background-color: #f6f6f6;
+font-size: 13px;
+line-height: 1.3;
+}
+#TOC .toctitle {
+font-weight: bold;
+font-size: 15px;
+margin-left: 5px;
+}
+#TOC ul {
+padding-left: 40px;
+margin-left: -1.5em;
+margin-top: 5px;
+margin-bottom: 5px;
+}
+#TOC ul ul {
+margin-left: -2em;
+}
+#TOC li {
+line-height: 16px;
+}
+table {
+margin: 1em auto;
+border-width: 1px;
+border-color: #DDDDDD;
+border-style: outset;
+border-collapse: collapse;
+}
+table th {
+border-width: 2px;
+padding: 5px;
+border-style: inset;
+}
+table td {
+border-width: 1px;
+border-style: inset;
+line-height: 18px;
+padding: 5px 5px;
+}
+table, table th, table td {
+border-left-style: none;
+border-right-style: none;
+}
+table thead, table tr.even {
+background-color: #f7f7f7;
+}
+p {
+margin: 0.5em 0;
+}
+blockquote {
+background-color: #f6f6f6;
+padding: 0.25em 0.75em;
+}
+hr {
+border-style: solid;
+border: none;
+border-top: 1px solid #777;
+margin: 28px 0;
+}
+dl {
+margin-left: 0;
+}
+dl dd {
+margin-bottom: 13px;
+margin-left: 13px;
+}
+dl dt {
+font-weight: bold;
+}
+ul {
+margin-top: 0;
+}
+ul li {
+list-style: circle outside;
+}
+ul ul {
+margin-bottom: 0;
+}
+pre, code {
+background-color: #f7f7f7;
+border-radius: 3px;
+color: #333;
+white-space: pre-wrap; 
+}
+pre {
+border-radius: 3px;
+margin: 5px 0px 10px 0px;
+padding: 10px;
+}
+pre:not([class]) {
+background-color: #f7f7f7;
+}
+code {
+font-family: Consolas, Monaco, 'Courier New', monospace;
+font-size: 85%;
+}
+p > code, li > code {
+padding: 2px 0px;
+}
+div.figure {
+text-align: center;
+}
+img {
+background-color: #FFFFFF;
+padding: 2px;
+border: 1px solid #DDDDDD;
+border-radius: 3px;
+border: 1px solid #CCCCCC;
+margin: 0 5px;
+}
+h1 {
+margin-top: 0;
+font-size: 35px;
+line-height: 40px;
+}
+h2 {
+border-bottom: 4px solid #f7f7f7;
+padding-top: 10px;
+padding-bottom: 2px;
+font-size: 145%;
+}
+h3 {
+border-bottom: 2px solid #f7f7f7;
+padding-top: 10px;
+font-size: 120%;
+}
+h4 {
+border-bottom: 1px solid #f7f7f7;
+margin-left: 8px;
+font-size: 105%;
+}
+h5, h6 {
+border-bottom: 1px solid #ccc;
+font-size: 105%;
+}
+a {
+color: #0033dd;
+text-decoration: none;
+}
+a:hover {
+color: #6666ff; }
+a:visited {
+color: #800080; }
+a:visited:hover {
+color: #BB00BB; }
+a[href^="http:"] {
+text-decoration: underline; }
+a[href^="https:"] {
+text-decoration: underline; }
+
+code > span.kw { color: #555; font-weight: bold; } 
+code > span.dt { color: #902000; } 
+code > span.dv { color: #40a070; } 
+code > span.bn { color: #d14; } 
+code > span.fl { color: #d14; } 
+code > span.ch { color: #d14; } 
+code > span.st { color: #d14; } 
+code > span.co { color: #888888; font-style: italic; } 
+code > span.ot { color: #007020; } 
+code > span.al { color: #ff0000; font-weight: bold; } 
+code > span.fu { color: #900; font-weight: bold; } 
+code > span.er { color: #a61717; background-color: #e3d2d2; } 
+</style>
+
+
+
+
+</head>
+
+<body>
+
+
+
+
+<h1 class="title toc-ignore">Models in MDPL: GLMs, frugal copulas and
+your own likelihood</h1>
+
+
+
+<div id="what-mdpl-needs-from-a-model" class="section level2">
+<h2>What MDPL needs from a model</h2>
+<p>Every model reduces to an <code>mdpl_model</code> holding what the
+fusion uses:</p>
+<table>
+<colgroup>
+<col width="50%" />
+<col width="50%" />
+</colgroup>
+<thead>
+<tr>
+<th>ingredient</th>
+<th>used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>parameter estimate <code>par</code> and information
+<code>OI</code></td>
+<td>the power posterior, the Taylor weight selection</td>
+</tr>
+<tr>
+<td>robust covariance <code>sandwich</code> (optional)</td>
+<td><code>robust = TRUE</code></td>
+</tr>
+<tr>
+<td>per-row log-likelihood <code>loglik_mat(Theta)</code></td>
+<td>ELPD weight selection</td>
+</tr>
+<tr>
+<td><code>effect()</code> / <code>contrast()</code></td>
+<td>CATE and ATE from the parameters</td>
+</tr>
+</tbody>
+</table>
+<p>A model is <strong>in scope</strong> when it is a regular parametric
+likelihood: a finite-dimensional, identifiable parameter in the interior
+of its space, a log-likelihood that is smooth and available per row (or
+cluster), and the same parameterisation in every data set. A shift
+between sources is then a shift in the parameter, which the weights
+trade off.</p>
+<table>
+<colgroup>
+<col width="50%" />
+<col width="50%" />
+</colgroup>
+<thead>
+<tr>
+<th>supported now</th>
+<th><code>mdpl_glm(formula, family)</code>: Gaussian, binomial
+(logit/probit/cloglog), Poisson, Gamma</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td></td>
+<td><code>mdpl_causl(formulas, family)</code>: Gaussian-copula frugal
+models</td>
+</tr>
+<tr>
+<td></td>
+<td><code>mdpl_custom(loglik, start, ...)</code>: any smooth likelihood
+you specify</td>
+</tr>
+<tr>
+<td>planned</td>
+<td>parametric survival with censoring, piecewise-exponential,
+ordinal/multinomial, clustered data</td>
+</tr>
+<tr>
+<td>not supported</td>
+<td>trees/forests/BART, lasso-type penalised fits, mixtures and latent
+classes, Cox partial likelihood, nonparametric models, parameters on a
+boundary. For these the normal approximation behind the fast route does
+not hold.</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div id="glms" class="section level2">
+<h2>GLMs</h2>
+<div class="sourceCode" id="cb1"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" tabindex="-1"></a>spec <span class="ot">&lt;-</span> <span class="fu">mdpl_glm</span>(Y <span class="sc">~</span> A <span class="sc">*</span> X, <span class="fu">binomial</span>())</span>
+<span id="cb1-2"><a href="#cb1-2" tabindex="-1"></a>spec</span>
+<span id="cb1-3"><a href="#cb1-3" tabindex="-1"></a><span class="co">#&gt; &lt;mdpl_spec&gt; GLM, binomial(logit): Y ~ A * X</span></span></code></pre></div>
+<p>The family is the only thing that changes between continuous, binary
+and count outcomes; the introductory vignette has a worked example.</p>
+</div>
+<div id="frugal-copula-models-causl" class="section level2">
+<h2>Frugal copula models (<code>causl</code>)</h2>
+<p>The <em>frugal parametrisation</em> writes the joint law as <span class="math inline">\(p(c)\,p(z\mid c)\,p(x\mid z,c)\,q(y\mid
+do(x),c)\)</span> with a copula tying the margins together. Here <span class="math inline">\(c\)</span> are baseline covariates (including any
+effect modifiers; they are conditioned on, not modelled), <span class="math inline">\(z\)</span> further pre-treatment variables, <span class="math inline">\(x\)</span> the treatment and <span class="math inline">\(y\)</span> the outcome. It has four blocks:</p>
+<ol style="list-style-type: decimal">
+<li><code>Z</code>: the pre-treatment variables (nuisance; crude is
+fine),</li>
+<li><code>X</code>: the treatment model, which shares no parameters with
+the others and is left out of the fit,</li>
+<li><code>Y</code>: the outcome margin <span class="math inline">\(q(y\mid do(x),c)\)</span>, whose <code>X</code>
+and <code>X:modifier</code> coefficients are the causal effect MDPL
+borrows on,</li>
+<li><code>cop</code>: the copula, which carries the confounding between
+<code>Z</code> and <code>Y</code>.</li>
+</ol>
+<p>You pass blocks 1, 3 and 4 as a flat list of formulas, with the
+copula last.</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">3</span>)</span>
+<span id="cb2-2"><a href="#cb2-2" tabindex="-1"></a></span>
+<span id="cb2-3"><a href="#cb2-3" tabindex="-1"></a><span class="co"># Simulating the data (this uses causl&#39;s own generator, not MDPL)</span></span>
+<span id="cb2-4"><a href="#cb2-4" tabindex="-1"></a>gen_formulas <span class="ot">&lt;-</span> <span class="fu">list</span>(</span>
+<span id="cb2-5"><a href="#cb2-5" tabindex="-1"></a>  Z <span class="sc">~</span> C1,                    <span class="co"># pre-treatment variable</span></span>
+<span id="cb2-6"><a href="#cb2-6" tabindex="-1"></a>  <span class="fu">list</span>(X <span class="sc">~</span> <span class="dv">1</span>, C1 <span class="sc">~</span> <span class="dv">1</span>),       <span class="co"># treatment and baseline covariate</span></span>
+<span id="cb2-7"><a href="#cb2-7" tabindex="-1"></a>  Y <span class="sc">~</span> X <span class="sc">*</span> C1,                <span class="co"># outcome margin</span></span>
+<span id="cb2-8"><a href="#cb2-8" tabindex="-1"></a>  <span class="sc">~</span> <span class="dv">1</span>                        <span class="co"># copula</span></span>
+<span id="cb2-9"><a href="#cb2-9" tabindex="-1"></a>)</span>
+<span id="cb2-10"><a href="#cb2-10" tabindex="-1"></a>gen_family <span class="ot">&lt;-</span> <span class="fu">list</span>(<span class="dv">1</span>, <span class="fu">c</span>(<span class="dv">5</span>, <span class="dv">1</span>), <span class="dv">1</span>, <span class="dv">1</span>)</span>
+<span id="cb2-11"><a href="#cb2-11" tabindex="-1"></a>gen_pars <span class="ot">&lt;-</span> <span class="fu">list</span>(</span>
+<span id="cb2-12"><a href="#cb2-12" tabindex="-1"></a>  <span class="at">C1 =</span> <span class="fu">list</span>(<span class="at">beta =</span> <span class="dv">0</span>, <span class="at">phi =</span> <span class="dv">1</span>),</span>
+<span id="cb2-13"><a href="#cb2-13" tabindex="-1"></a>  <span class="at">Z =</span> <span class="fu">list</span>(<span class="at">beta =</span> <span class="fu">c</span>(<span class="dv">0</span>, <span class="fl">0.5</span>), <span class="at">phi =</span> <span class="dv">1</span>),</span>
+<span id="cb2-14"><a href="#cb2-14" tabindex="-1"></a>  <span class="at">X =</span> <span class="fu">list</span>(<span class="at">beta =</span> <span class="dv">0</span>),</span>
+<span id="cb2-15"><a href="#cb2-15" tabindex="-1"></a>  <span class="at">Y =</span> <span class="fu">list</span>(<span class="at">beta =</span> <span class="fu">c</span>(<span class="fl">0.5</span>, <span class="fl">0.8</span>, <span class="fl">0.2</span>, <span class="fl">0.3</span>), <span class="at">phi =</span> <span class="dv">1</span>),</span>
+<span id="cb2-16"><a href="#cb2-16" tabindex="-1"></a>  <span class="at">cop =</span> <span class="fu">list</span>(<span class="at">beta =</span> <span class="fu">matrix</span>(<span class="fl">0.5</span>, <span class="dv">1</span>, <span class="dv">1</span>))</span>
+<span id="cb2-17"><a href="#cb2-17" tabindex="-1"></a>)</span>
+<span id="cb2-18"><a href="#cb2-18" tabindex="-1"></a>d_trial <span class="ot">&lt;-</span> causl<span class="sc">::</span><span class="fu">rfrugalParam</span>(</span>
+<span id="cb2-19"><a href="#cb2-19" tabindex="-1"></a>  <span class="at">n =</span> <span class="dv">250</span>,</span>
+<span id="cb2-20"><a href="#cb2-20" tabindex="-1"></a>  <span class="at">formulas =</span> gen_formulas,</span>
+<span id="cb2-21"><a href="#cb2-21" tabindex="-1"></a>  <span class="at">family =</span> gen_family,</span>
+<span id="cb2-22"><a href="#cb2-22" tabindex="-1"></a>  <span class="at">pars =</span> gen_pars</span>
+<span id="cb2-23"><a href="#cb2-23" tabindex="-1"></a>)</span>
+<span id="cb2-24"><a href="#cb2-24" tabindex="-1"></a><span class="co">#&gt; Inversion method selected: using pair-copula parameterization</span></span>
+<span id="cb2-25"><a href="#cb2-25" tabindex="-1"></a>d_obs <span class="ot">&lt;-</span> causl<span class="sc">::</span><span class="fu">rfrugalParam</span>(</span>
+<span id="cb2-26"><a href="#cb2-26" tabindex="-1"></a>  <span class="at">n =</span> <span class="dv">800</span>,</span>
+<span id="cb2-27"><a href="#cb2-27" tabindex="-1"></a>  <span class="at">formulas =</span> gen_formulas,</span>
+<span id="cb2-28"><a href="#cb2-28" tabindex="-1"></a>  <span class="at">family =</span> gen_family,</span>
+<span id="cb2-29"><a href="#cb2-29" tabindex="-1"></a>  <span class="at">pars =</span> gen_pars</span>
+<span id="cb2-30"><a href="#cb2-30" tabindex="-1"></a>)</span>
+<span id="cb2-31"><a href="#cb2-31" tabindex="-1"></a><span class="co">#&gt; Inversion method selected: using pair-copula parameterization</span></span>
+<span id="cb2-32"><a href="#cb2-32" tabindex="-1"></a></span>
+<span id="cb2-33"><a href="#cb2-33" tabindex="-1"></a><span class="co"># The MDPL specification: one formula and one family code per block</span></span>
+<span id="cb2-34"><a href="#cb2-34" tabindex="-1"></a>spec <span class="ot">&lt;-</span> <span class="fu">mdpl_causl</span>(</span>
+<span id="cb2-35"><a href="#cb2-35" tabindex="-1"></a>  <span class="at">formulas =</span> <span class="fu">list</span>(Z <span class="sc">~</span> C1, Y <span class="sc">~</span> X <span class="sc">*</span> C1, <span class="sc">~</span> <span class="dv">1</span>),</span>
+<span id="cb2-36"><a href="#cb2-36" tabindex="-1"></a>  <span class="at">family =</span> <span class="fu">c</span>(<span class="dv">1</span>, <span class="dv">1</span>, <span class="dv">1</span>),</span>
+<span id="cb2-37"><a href="#cb2-37" tabindex="-1"></a>  <span class="at">outcome =</span> <span class="st">&quot;Y&quot;</span>,</span>
+<span id="cb2-38"><a href="#cb2-38" tabindex="-1"></a>  <span class="at">kwd =</span> <span class="st">&quot;cop&quot;</span></span>
+<span id="cb2-39"><a href="#cb2-39" tabindex="-1"></a>)</span>
+<span id="cb2-40"><a href="#cb2-40" tabindex="-1"></a>fit <span class="ot">&lt;-</span> <span class="fu">mdpl</span>(</span>
+<span id="cb2-41"><a href="#cb2-41" tabindex="-1"></a>  <span class="at">model =</span> spec,</span>
+<span id="cb2-42"><a href="#cb2-42" tabindex="-1"></a>  <span class="at">data_exp =</span> d_trial,</span>
+<span id="cb2-43"><a href="#cb2-43" tabindex="-1"></a>  <span class="at">data_obs =</span> <span class="fu">list</span>(d_obs),</span>
+<span id="cb2-44"><a href="#cb2-44" tabindex="-1"></a>  <span class="at">treat =</span> <span class="st">&quot;X&quot;</span></span>
+<span id="cb2-45"><a href="#cb2-45" tabindex="-1"></a>)</span>
+<span id="cb2-46"><a href="#cb2-46" tabindex="-1"></a>fit</span>
+<span id="cb2-47"><a href="#cb2-47" tabindex="-1"></a><span class="co">#&gt; MDPL fit (causl frugal model, margins: Z, Y)</span></span>
+<span id="cb2-48"><a href="#cb2-48" tabindex="-1"></a><span class="co">#&gt; 1 observational source(s); weights chosen by taylor; scored on all parameters</span></span>
+<span id="cb2-49"><a href="#cb2-49" tabindex="-1"></a><span class="co">#&gt; Borrowing weights eta (t2 is the default; t1 is more conservative):</span></span>
+<span id="cb2-50"><a href="#cb2-50" tabindex="-1"></a><span class="co">#&gt;            t1  t2</span></span>
+<span id="cb2-51"><a href="#cb2-51" tabindex="-1"></a><span class="co">#&gt; source1 0.113 0.3</span></span>
+<span id="cb2-52"><a href="#cb2-52" tabindex="-1"></a><span class="co">#&gt; Treatment-effect coefficients (t2):</span></span>
+<span id="cb2-53"><a href="#cb2-53" tabindex="-1"></a><span class="co">#&gt;    term estimate     se lower upper</span></span>
+<span id="cb2-54"><a href="#cb2-54" tabindex="-1"></a><span class="co">#&gt;     Y:X    0.863 0.0855 0.696 1.031</span></span>
+<span id="cb2-55"><a href="#cb2-55" tabindex="-1"></a><span class="co">#&gt;  Y:C1:X    0.324 0.0821 0.163 0.484</span></span>
+<span id="cb2-56"><a href="#cb2-56" tabindex="-1"></a><span class="co">#&gt; ATE:</span></span>
+<span id="cb2-57"><a href="#cb2-57" tabindex="-1"></a><span class="co">#&gt;  estimate     se lower upper</span></span>
+<span id="cb2-58"><a href="#cb2-58" tabindex="-1"></a><span class="co">#&gt;     0.887 0.0855 0.719  1.05</span></span>
+<span id="cb2-59"><a href="#cb2-59" tabindex="-1"></a><span class="co">#&gt; CATE = 0.863 + 0.324*C1</span></span>
+<span id="cb2-60"><a href="#cb2-60" tabindex="-1"></a><span class="fu">mdpl_cate</span>(fit, <span class="fu">data.frame</span>(<span class="at">C1 =</span> <span class="fu">c</span>(<span class="sc">-</span><span class="dv">1</span>, <span class="dv">0</span>, <span class="dv">1</span>)))</span>
+<span id="cb2-61"><a href="#cb2-61" tabindex="-1"></a><span class="co">#&gt;   C1  estimate         se     lower     upper</span></span>
+<span id="cb2-62"><a href="#cb2-62" tabindex="-1"></a><span class="co">#&gt; 1 -1 0.5395885 0.12027421 0.3038554 0.7753216</span></span>
+<span id="cb2-63"><a href="#cb2-63" tabindex="-1"></a><span class="co">#&gt; 2  0 0.8630965 0.08550439 0.6955110 1.0306820</span></span>
+<span id="cb2-64"><a href="#cb2-64" tabindex="-1"></a><span class="co">#&gt; 3  1 1.1866045 0.11677326 0.9577331 1.4154759</span></span>
+<span id="cb2-65"><a href="#cb2-65" tabindex="-1"></a><span class="fu">mdpl_ate</span>(fit)</span>
+<span id="cb2-66"><a href="#cb2-66" tabindex="-1"></a><span class="co">#&gt;    estimate         se     lower   upper</span></span>
+<span id="cb2-67"><a href="#cb2-67" tabindex="-1"></a><span class="co">#&gt; 1 0.8869259 0.08553949 0.7192715 1.05458</span></span></code></pre></div>
+<p>Parameter names (<code>Y:X</code>, <code>Y:C1:X</code>,
+<code>Z:...</code>, <code>cop1:...</code>, <code>phi:...</code>) show
+their block in the raw parameter vectors; the treatment-effect tables
+(<code>mdpl_coef()</code>, <code>print(fit)</code>) drop the outcome
+prefix and report <code>X</code>, <code>C1:X</code> as in an ordinary
+regression.</p>
+<div id="what-goes-into-each-argument" class="section level3">
+<h3>What goes into each argument</h3>
+<p><code>mdpl_causl(formulas, family, outcome = &quot;Y&quot;, kwd = &quot;cop&quot;)</code>
+and the <code>mdpl()</code> call:</p>
+<table>
+<colgroup>
+<col width="50%" />
+<col width="50%" />
+</colgroup>
+<thead>
+<tr>
+<th>argument</th>
+<th>what to put in it</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>formulas</code></td>
+<td>A flat list in fitting order: one formula per modelled pre-treatment
+variable (<code>Z</code>), then the outcome, then the copula.</td>
+</tr>
+<tr>
+<td><code>family</code></td>
+<td>Numeric codes, <strong>one per formula including the
+copula</strong>, in the same order. Margins: <code>1</code> Gaussian,
+<code>5</code> binary. The last entry is the copula family
+(<code>1</code> Gaussian). Default all Gaussian.</td>
+</tr>
+<tr>
+<td><code>outcome</code></td>
+<td>The outcome variable, the left-hand side of one formula. Default
+<code>&quot;Y&quot;</code>.</td>
+</tr>
+<tr>
+<td><code>kwd</code></td>
+<td>The keyword naming the copula parameters (<code>cop1:...</code>).
+Change it only if your data has a variable called <code>cop</code>.</td>
+</tr>
+<tr>
+<td><code>treat</code> in <code>mdpl()</code></td>
+<td>The treatment column (here <code>&quot;X&quot;</code>), which appears on the
+right-hand side of the outcome formula.</td>
+</tr>
+</tbody>
+</table>
+<p>What each formula should contain:</p>
+<ul>
+<li><strong><code>Z</code> formulas</strong> (<code>Z ~ C1</code>). The
+left-hand side is a pre-treatment variable to model; the right-hand side
+is the baseline covariates it depends on. A covariate that appears only
+on a right-hand side (<code>C1</code>) is conditioned on. Use one
+formula per modelled variable, or none. These are nuisance models, so a
+simple form is fine.</li>
+<li><strong>The outcome formula</strong> (<code>Y ~ X * C1</code>). Its
+treatment coefficients are what MDPL fuses. Interact the treatment with
+every covariate that should modify the effect: the CATE is the
+<code>X</code> coefficient plus the <code>X:C1</code> coefficient times
+<code>C1</code>, as for a GLM. With <code>Y ~ X</code> the effect is the
+same for everyone. It is on the scale of the margin’s linear predictor,
+a mean difference for a Gaussian outcome.</li>
+<li><strong>The copula formula</strong> (<code>~ 1</code>). It starts
+with <code>~</code> and has no left-hand side, and says how the
+dependence between the modelled variables varies with covariates.
+<code>~ 1</code> gives one constant parameter per pair of variables;
+<code>~ C1</code> lets it depend on <code>C1</code>. With one
+<code>Z</code> and the outcome there is one pair and any copula formula
+works. With two <code>Z</code> variables there are three pairs
+(<code>Z1</code>-<code>Z2</code>, <code>Z1</code>-<code>Y</code>,
+<code>Z2</code>-<code>Y</code>), and <code>causl</code> 0.10.4.9000
+thenerrors unless the copula formula is <code>~ 1</code></li>
+</ul>
+<p>The treatment model (<code>X ~ ...</code>) is not in
+<code>formulas</code>, since it does not affect the fusion. The data
+must still contain the treatment and every variable named in the
+formulas, with the same names in each data set.</p>
+<p>Parameters are named <code>block:term</code>;
+<code>treatment_terms()</code> lists the outcome’s treatment terms,
+which <code>target = &quot;cate&quot;</code>, <code>coef</code> and the CATE
+formula use.</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" tabindex="-1"></a><span class="fu">names</span>(fit<span class="sc">$</span>fit_exp<span class="sc">$</span>par)</span>
+<span id="cb3-2"><a href="#cb3-2" tabindex="-1"></a><span class="co">#&gt; [1] &quot;Z:(Intercept)&quot;    &quot;Z:C1&quot;             &quot;Y:(Intercept)&quot;    &quot;Y:C1&quot;            </span></span>
+<span id="cb3-3"><a href="#cb3-3" tabindex="-1"></a><span class="co">#&gt; [5] &quot;Y:X&quot;              &quot;Y:C1:X&quot;           &quot;cop1:(Intercept)&quot; &quot;phi:Z&quot;           </span></span>
+<span id="cb3-4"><a href="#cb3-4" tabindex="-1"></a><span class="co">#&gt; [9] &quot;phi:Y&quot;</span></span>
+<span id="cb3-5"><a href="#cb3-5" tabindex="-1"></a><span class="fu">treatment_terms</span>(fit<span class="sc">$</span>fit_exp, <span class="st">&quot;X&quot;</span>)</span>
+<span id="cb3-6"><a href="#cb3-6" tabindex="-1"></a><span class="co">#&gt; [1] &quot;Y:X&quot;    &quot;Y:C1:X&quot;</span></span>
+<span id="cb3-7"><a href="#cb3-7" tabindex="-1"></a>fit<span class="sc">$</span>estimates<span class="sc">$</span>cate</span>
+<span id="cb3-8"><a href="#cb3-8" tabindex="-1"></a><span class="co">#&gt; CATE = 0.863 + 0.324*C1   [link scale, t2]</span></span>
+<span id="cb3-9"><a href="#cb3-9" tabindex="-1"></a><span class="co">#&gt;    term estimate     se lower upper</span></span>
+<span id="cb3-10"><a href="#cb3-10" tabindex="-1"></a><span class="co">#&gt;     Y:X    0.863 0.0855 0.696 1.031</span></span>
+<span id="cb3-11"><a href="#cb3-11" tabindex="-1"></a><span class="co">#&gt;  Y:C1:X    0.324 0.0821 0.163 0.484</span></span>
+<span id="cb3-12"><a href="#cb3-12" tabindex="-1"></a><span class="co">#&gt; Call it on a data frame of covariates to get the CATE with intervals.</span></span></code></pre></div>
+<p>The copula and <code>Z</code> parameters are also in the fitted
+vector, so with the default <code>target = NULL</code> an observational
+data set whose confounding or covariate distribution differs from the
+trial is down-weighted. <code>target = &quot;cate&quot;</code> scores only the
+outcome’s treatment parameters; the others still adjust through their
+correlation.</p>
+</div>
+</div>
+<div id="your-own-likelihood" class="section level2">
+<h2>Your own likelihood</h2>
+<p>Give the log-likelihood of one row and a starting value; MDPL finds
+the estimate with <code>optim</code> and the information and sandwich by
+numerical derivatives. For the treatment effect give either
+<code>contrast</code> (effect linear in the parameters, exact intervals)
+or <code>effect</code> (any smooth function of one parameter vector). A
+logistic model written by hand:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" tabindex="-1"></a>loglik <span class="ot">&lt;-</span> <span class="cf">function</span>(theta, data) {</span>
+<span id="cb4-2"><a href="#cb4-2" tabindex="-1"></a>  eta <span class="ot">&lt;-</span> theta[<span class="dv">1</span>] <span class="sc">+</span> theta[<span class="dv">2</span>] <span class="sc">*</span> data<span class="sc">$</span>A <span class="sc">+</span> theta[<span class="dv">3</span>] <span class="sc">*</span> data<span class="sc">$</span>X <span class="sc">+</span> theta[<span class="dv">4</span>] <span class="sc">*</span> data<span class="sc">$</span>A <span class="sc">*</span> data<span class="sc">$</span>X</span>
+<span id="cb4-3"><a href="#cb4-3" tabindex="-1"></a>  data<span class="sc">$</span>Y <span class="sc">*</span> eta <span class="sc">-</span> <span class="fu">log1p</span>(<span class="fu">exp</span>(eta))</span>
+<span id="cb4-4"><a href="#cb4-4" tabindex="-1"></a>}</span>
+<span id="cb4-5"><a href="#cb4-5" tabindex="-1"></a>spec <span class="ot">&lt;-</span> <span class="fu">mdpl_custom</span>(</span>
+<span id="cb4-6"><a href="#cb4-6" tabindex="-1"></a>  loglik, <span class="at">start =</span> <span class="fu">c</span>(<span class="at">int =</span> <span class="dv">0</span>, <span class="at">A =</span> <span class="dv">0</span>, <span class="at">X =</span> <span class="dv">0</span>, <span class="at">AX =</span> <span class="dv">0</span>),</span>
+<span id="cb4-7"><a href="#cb4-7" tabindex="-1"></a>  <span class="at">contrast =</span> <span class="cf">function</span>(newdata, treat) <span class="fu">cbind</span>(<span class="dv">0</span>, <span class="dv">1</span>, <span class="dv">0</span>, newdata<span class="sc">$</span>X),   <span class="co"># log odds ratio at X</span></span>
+<span id="cb4-8"><a href="#cb4-8" tabindex="-1"></a>  <span class="at">treatment_terms =</span> <span class="cf">function</span>(treat) <span class="fu">c</span>(<span class="st">&quot;A&quot;</span>, <span class="st">&quot;AX&quot;</span>))</span>
+<span id="cb4-9"><a href="#cb4-9" tabindex="-1"></a></span>
+<span id="cb4-10"><a href="#cb4-10" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">4</span>)</span>
+<span id="cb4-11"><a href="#cb4-11" tabindex="-1"></a>simb <span class="ot">&lt;-</span> <span class="cf">function</span>(n, <span class="at">bias =</span> <span class="dv">0</span>) {</span>
+<span id="cb4-12"><a href="#cb4-12" tabindex="-1"></a>  X <span class="ot">&lt;-</span> <span class="fu">rnorm</span>(n); U <span class="ot">&lt;-</span> <span class="fu">rnorm</span>(n)</span>
+<span id="cb4-13"><a href="#cb4-13" tabindex="-1"></a>  A <span class="ot">&lt;-</span> <span class="cf">if</span> (bias <span class="sc">==</span> <span class="dv">0</span>) <span class="fu">rbinom</span>(n, <span class="dv">1</span>, <span class="fl">0.5</span>) <span class="cf">else</span> <span class="fu">rbinom</span>(n, <span class="dv">1</span>, <span class="fu">plogis</span>(X <span class="sc">+</span> bias <span class="sc">*</span> U))</span>
+<span id="cb4-14"><a href="#cb4-14" tabindex="-1"></a>  <span class="fu">data.frame</span>(<span class="at">X =</span> X, <span class="at">A =</span> A,</span>
+<span id="cb4-15"><a href="#cb4-15" tabindex="-1"></a>             <span class="at">Y =</span> <span class="fu">rbinom</span>(n, <span class="dv">1</span>, <span class="fu">plogis</span>(<span class="sc">-</span><span class="fl">0.3</span> <span class="sc">+</span> <span class="fl">0.8</span> <span class="sc">*</span> A <span class="sc">+</span> <span class="fl">0.5</span> <span class="sc">*</span> X <span class="sc">+</span> <span class="fl">0.3</span> <span class="sc">*</span> A <span class="sc">*</span> X <span class="sc">+</span> bias <span class="sc">*</span> U)))</span>
+<span id="cb4-16"><a href="#cb4-16" tabindex="-1"></a>}</span>
+<span id="cb4-17"><a href="#cb4-17" tabindex="-1"></a>trial <span class="ot">&lt;-</span> <span class="fu">simb</span>(<span class="dv">400</span>); obs <span class="ot">&lt;-</span> <span class="fu">simb</span>(<span class="dv">1200</span>, <span class="fl">0.5</span>)</span></code></pre></div>
+<p>If your likelihood is only available as a total (no per-row values),
+set <code>per_row = FALSE</code> and have <code>loglik</code> return the
+sum. The fit and <code>method = &quot;taylor&quot;</code> work as usual; there is
+then no sandwich (<code>robust = TRUE</code> is unavailable), and
+<code>method = &quot;elpd&quot;</code> is not possible, nor is
+<code>method = &quot;cv&quot;</code> unless you supply a <code>loss</code>.</p>
+<p>Before fusing, check the likelihood meets the method’s conditions
+(finite per-row log-likelihood, zero gradient, well-conditioned
+information, model-based and robust errors agreeing, same parameters in
+every data set):</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" tabindex="-1"></a><span class="fu">mdpl_check_model</span>(spec, <span class="fu">list</span>(trial, obs))</span>
+<span id="cb5-2"><a href="#cb5-2" tabindex="-1"></a><span class="co">#&gt;                                              check passed</span></span>
+<span id="cb5-3"><a href="#cb5-3" tabindex="-1"></a><span class="co">#&gt;                                         model fits   TRUE</span></span>
+<span id="cb5-4"><a href="#cb5-4" tabindex="-1"></a><span class="co">#&gt;                   per-row log-likelihood is finite   TRUE</span></span>
+<span id="cb5-5"><a href="#cb5-5" tabindex="-1"></a><span class="co">#&gt;                   gradient is zero at the estimate   TRUE</span></span>
+<span id="cb5-6"><a href="#cb5-6" tabindex="-1"></a><span class="co">#&gt;                   information is positive definite   TRUE</span></span>
+<span id="cb5-7"><a href="#cb5-7" tabindex="-1"></a><span class="co">#&gt;                    information is well conditioned   TRUE</span></span>
+<span id="cb5-8"><a href="#cb5-8" tabindex="-1"></a><span class="co">#&gt;       model-based and robust standard errors agree   TRUE</span></span>
+<span id="cb5-9"><a href="#cb5-9" tabindex="-1"></a><span class="co">#&gt;  parameters have the same length in every data set   TRUE</span></span>
+<span id="cb5-10"><a href="#cb5-10" tabindex="-1"></a><span class="co">#&gt;                              parameter names agree   TRUE</span></span>
+<span id="cb5-11"><a href="#cb5-11" tabindex="-1"></a><span class="co">#&gt;                  detail</span></span>
+<span id="cb5-12"><a href="#cb5-12" tabindex="-1"></a><span class="co">#&gt;                        </span></span>
+<span id="cb5-13"><a href="#cb5-13" tabindex="-1"></a><span class="co">#&gt;                400 rows</span></span>
+<span id="cb5-14"><a href="#cb5-14" tabindex="-1"></a><span class="co">#&gt;  max |score| = 9.24e-05</span></span>
+<span id="cb5-15"><a href="#cb5-15" tabindex="-1"></a><span class="co">#&gt;     min eigenvalue 12.3</span></span>
+<span id="cb5-16"><a href="#cb5-16" tabindex="-1"></a><span class="co">#&gt;   condition number 9.51</span></span>
+<span id="cb5-17"><a href="#cb5-17" tabindex="-1"></a><span class="co">#&gt;   ratio range 0.969 - 1</span></span>
+<span id="cb5-18"><a href="#cb5-18" tabindex="-1"></a><span class="co">#&gt;                        </span></span>
+<span id="cb5-19"><a href="#cb5-19" tabindex="-1"></a><span class="co">#&gt; </span></span></code></pre></div>
+<p>Then use it like any other model:</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" tabindex="-1"></a>fit <span class="ot">&lt;-</span> <span class="fu">mdpl</span>(spec, trial, <span class="fu">list</span>(obs), <span class="at">treat =</span> <span class="st">&quot;A&quot;</span>)</span>
+<span id="cb6-2"><a href="#cb6-2" tabindex="-1"></a>fit<span class="sc">$</span>eta</span>
+<span id="cb6-3"><a href="#cb6-3" tabindex="-1"></a><span class="co">#&gt;                t1        t2</span></span>
+<span id="cb6-4"><a href="#cb6-4" tabindex="-1"></a><span class="co">#&gt; source1 0.1064988 0.2332482</span></span>
+<span id="cb6-5"><a href="#cb6-5" tabindex="-1"></a><span class="fu">mdpl_cate</span>(fit, <span class="fu">data.frame</span>(<span class="at">X =</span> <span class="fu">c</span>(<span class="sc">-</span><span class="dv">1</span>, <span class="dv">0</span>, <span class="dv">1</span>)))</span>
+<span id="cb6-6"><a href="#cb6-6" tabindex="-1"></a><span class="co">#&gt;    X  estimate        se      lower     upper</span></span>
+<span id="cb6-7"><a href="#cb6-7" tabindex="-1"></a><span class="co">#&gt; 1 -1 0.3749562 0.2443716 -0.1040033 0.8539157</span></span>
+<span id="cb6-8"><a href="#cb6-8" tabindex="-1"></a><span class="co">#&gt; 2  0 0.8235968 0.1681106  0.4941061 1.1530875</span></span>
+<span id="cb6-9"><a href="#cb6-9" tabindex="-1"></a><span class="co">#&gt; 3  1 1.2722375 0.2618833  0.7589556 1.7855194</span></span></code></pre></div>
+<p>If a likelihood fails the checks (a non-identifiable parameter, a
+boundary estimate, a non-smooth density), the normal approximation may
+not apply and the package may not be appropriate.</p>
+</div>
+
+
+
+<!-- code folding -->
+
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>

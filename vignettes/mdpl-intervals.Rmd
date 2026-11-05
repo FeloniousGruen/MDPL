@@ -1,0 +1,109 @@
+---
+title: "Intervals for MDPL estimates: posterior and bootstrap"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Intervals for MDPL estimates: posterior and bootstrap}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", fig.width = 6.5, fig.height = 3.8)
+library(MDPL)
+```
+
+## Two kinds of interval
+
+`mdpl_cate()`, `mdpl_ate()` and `mdpl_coef()` return one of two kinds of interval.
+
+- **Posterior** (the default for a plain fit): the normal power posterior *given the selected weights*. It is instant.
+- **Bootstrap** (`bootstrap_CI = TRUE`): resample the data, refit every model, **reselect the weights** and recompute the effect. It costs about `B` fits.
+
+The weights are chosen from the trial data, but the posterior treats them as fixed. The two can be close when a source is clearly clean or clearly useless, since the weight is then stable. They often paritcularly differ when a source is only moderately informative and the weight varies from trial to trial.
+
+```{r sim}
+sim <- function(n, bias = 0) {
+  X <- rnorm(n, 1); U <- rnorm(n)
+  A <- rbinom(n, 1, if (bias == 0) 0.5 else plogis(X - 1 + bias * U))
+  data.frame(X = X, A = A, Y = 0.5 + X + 0.2 * A + 0.1 * A * X + bias * U + rnorm(n))
+}
+set.seed(11)
+trial <- sim(300); obs <- list(src = sim(1000, 0.5))   # moderately confounded
+nd <- data.frame(X = c(0, 1, 2))                       # truth: 0.2 + 0.1 X
+```
+
+## Switching the bootstrap on
+
+It is an argument of the fitting call, off by default.
+
+```{r fit}
+system.time(
+  fit <- mdpl(Y ~ A * X, trial, obs, treat = "A", bootstrap_CI = TRUE, B = 100,
+              boot_seed = 1)
+)
+fit
+```
+
+Once replicates are stored, the effect functions and the stored coefficients and ATE (`fit$estimates`) use them. The stored CATE formula uses the posterior; call `mdpl_cate()` for bootstrap intervals at covariate values. Choose the kind with `ci`:
+
+```{r compare}
+post <- mdpl_cate(fit, nd, ci = "posterior")
+boot <- mdpl_cate(fit, nd)               # ci = "auto" -> bootstrap
+data.frame(X = nd$X, estimate = boot$estimate,
+           post_width = post$upper - post$lower,
+           boot_width = boot$upper - boot$lower)
+```
+
+The point estimate is the same; the bootstrap `se` is the standard deviation of the replicates. Percentile endpoints generally need more replicates (100 here to build quickly). With fewer, `interval = "normal"` (estimate $\pm$ 1.96 bootstrap standard errors) can be steadier:
+
+```{r normal}
+mdpl_cate(fit, nd, interval = "normal")
+```
+
+For a fit made without the bootstrap, `mdpl_cate_boot()`, `mdpl_ate_boot()` and `mdpl_coef_boot()` run one on demand (`B = 500` by default).
+
+## What is stored
+
+`fit$boot$draws` is a `B x p x traces` array of the fused parameters across replicates (traces `t1` and `t2`, default `t2`). Any function of the parameters can be summarised from it:
+
+```{r draws}
+dr <- fit$boot$draws[, c("A", "A:X"), "t2"]
+head(round(dr, 2), 3)
+hist(dr[, "A"] + 1 * dr[, "A:X"], breaks = 25, main = "",
+     xlab = "bootstrap CATE at X = 1")
+abline(v = 0.3, lty = 2)
+```
+
+The spread includes the weight changing between replicates, which the posterior interval, with its fixed weight, cannot see.
+
+## Effects that are not linear in the parameters
+
+With a non-identity link the response-scale effect (the risk difference for a logistic model) is nonlinear in the parameters. The bootstrap maps each replicate through the effect; the posterior route uses normal posterior draws.
+
+```{r binary}
+simb <- function(n, bias = 0) {
+  X <- rnorm(n); U <- rnorm(n)
+  A <- if (bias == 0) rbinom(n, 1, 0.5) else rbinom(n, 1, plogis(X + bias * U))
+  data.frame(X = X, A = A,
+             Y = rbinom(n, 1, plogis(-0.3 + 0.8 * A + 0.5 * X + 0.3 * A * X + bias * U)))
+}
+set.seed(12)
+fb <- mdpl(Y ~ A * X, simb(500), list(simb(1500, 1)), treat = "A", family = binomial(),
+           bootstrap_CI = TRUE, B = 100, boot_seed = 1)
+nd2 <- data.frame(X = c(-1, 0, 1))
+mdpl_cate(fb, nd2)                       # risk difference, bootstrap
+mdpl_cate(fb, nd2, ci = "posterior")     # risk difference, posterior
+mdpl_ate(fb)
+```
+
+## What the ATE is averaged over
+
+`mdpl_ate()` averages the CATE over the covariates of a data frame, by default the trial's, held fixed in every replicate. Pass another population's covariates as `data`:
+
+```{r ate}
+mdpl_ate(fit, data = data.frame(X = c(1.5, 2, 2.5)))
+```
+
+## Note on interval choice
+
+Posterior intervals can be useful for exploration but bootstrap intervals more fully account for the true uncertainty of the method. A bootstrap interval much wider than the posterior one suggests unstable weights.

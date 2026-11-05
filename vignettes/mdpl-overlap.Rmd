@@ -1,0 +1,231 @@
+---
+title: "Poor covariate overlap between the trial and the observational data"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Poor covariate overlap between the trial and the observational data}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+editor_options:
+  markdown:
+    wrap: 72
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", fig.width = 6.5, fig.height = 3.8)
+library(MDPL)
+```
+
+## What changes when overlap is poor
+
+Sometimes overlap between the trial and the observational data is poor.
+In these cases, the outcome model is particularly important for
+determining the appropriate amount of borrowing. If the observational
+covariates sit mostly outside the range of the trial, the observational
+data say little directly about the trial population, and what it does
+say passes through the **outcome model**: the model extrapolates the
+effect from the observational to the trial population.
+
+This has a few main consequences:
+
+- The extrapolation is parametric. A linear-in-$X$ model assumes the
+  effect keeps being linear; a more flexible one assumes less, and the
+  observational data then add less.
+- The target stays the same. `mdpl_ate()` averages the CATE over the
+  covariates of the trial (and $\eta$ is selected to improve inference
+  on the trial population), so the estimate is always for the trial
+  population.
+
+This vignette shows both with one simulated example, and then checks
+that a biased source is still down-weighted.
+
+## Simulated data
+
+We give a simulated example here with only one covariate to demonstrate
+these ideas. The trial ($n=600$) has $X\sim N(0,1)$. Both observational
+data sets ($n=1500$) have $X\sim N(2.2, 0.6^2)$, so they cover the upper
+tail of the trial. The true effect is curved,
+$\tau(x) = 0.3 + 0.25x - 0.15x^2$. The `clean` observational data set is
+unconfounded, so overlap is its only issue. In the `biased` one an
+unmeasured $U$ drives both the treatment and the outcome.
+
+```{r sim}
+set.seed(1)
+tau <- function(x) 0.3 + 0.25 * x - 0.15 * x^2
+sim <- function(n, mu = 0, sd = 1, bias = 0) {
+  X <- rnorm(n, mu, sd); U <- rnorm(n)
+  A <- if (bias == 0) rbinom(n, 1, 0.5) else rbinom(n, 1, plogis(0.8 * (X - mu) + bias * U))
+  data.frame(X = X, A = A, Y = 0.5 + X + A * tau(X) + bias * U + rnorm(n))
+}
+trial <- sim(600)
+obs <- list(clean = sim(1500, 2.2, 0.6), biased = sim(1500, 2.2, 0.6, bias = 2))
+```
+
+Before fitting, compare the covariate distributions. The two
+observational data sets share the same covariate distribution, so one is
+plotted.
+
+```{r overlap}
+rng <- range(obs$clean$X)
+mean(trial$X >= rng[1] & trial$X <= rng[2])   # trial patients inside the observational range
+rng <- range(trial$X)
+mean(obs$clean$X >= rng[1] & obs$clean$X <= rng[2])   # observational patients inside the trial's range
+```
+
+```{r hist}
+br <- seq(-4, 5, by = 0.25)
+hist(trial$X, breaks = br, freq = FALSE, col = "#99999980", border = NA,
+     xlim = c(-4, 5), ylim = c(0, 0.75), xlab = "X", main = "")
+hist(obs$clean$X, breaks = br, freq = FALSE, col = "#0072B280", border = NA, add = TRUE)
+legend("topleft", c("trial", "observational"), fill = c("#99999980", "#0072B280"),
+       border = NA, bty = "n")
+```
+
+## The Outcome Model Determines Borrowing where there is Poor Overlap
+
+Fit the same data with a linear and a quadratic effect of $X$.
+
+```{r fit}
+fit_lin  <- mdpl(Y ~ A * X, trial, obs, treat = "A")
+fit_quad <- mdpl(Y ~ A * (X + I(X^2)), trial, obs, treat = "A")
+round(cbind(linear = fit_lin$eta[, "t2"], quadratic = fit_quad$eta[, "t2"]), 2)
+```
+
+The weight measures how well the observational data agree with the trial
+under the specified outcome model. A model that cannot represent the
+effect curve in the region the observational data cover will tend to
+disagree with the trial, which lowers the weight. This explains the
+pattern above:
+
+- **Linear model, both sources have** $\eta$ **values near 0.** The
+  model cannot represent the curved effect where the observational data
+  lie, so they are downweighted. The model extrapolation is the problem
+  rather than the data itself.
+- **Quadratic model, borrows a lot** **(**$\eta$ **near 1) when the
+  observational data are unbiased, borrows little if they are biased.**
+  The model can represent the effect in both regions, so the clean data
+  agree with the trial. The biased data do not: the confounding shifts
+  its treatment coefficients, and the randomised trial shows that.
+
+Poor overlap therefore does not hide the bias, because the weights
+compare the parameters shared with the trial and the trial largely fixes
+those. With a smaller trial the comparison is less sharp and the biased
+source can keep some weight.
+
+## CATE with poor overlap
+
+`mdpl_cate()` can be evaluated anywhere, including outside the trial
+range; the intervals show how much the data constrain it.
+
+```{r cate-plot, fig.height = 4.2}
+g <- data.frame(X = seq(-2.5, 4, length.out = 66))
+band <- function(fit, col) {
+  b <- mdpl_cate(fit, g)
+  polygon(c(g$X, rev(g$X)), c(b$lower, rev(b$upper)), col = paste0(col, "40"), border = NA)
+  lines(g$X, b$estimate, col = col, lwd = 2)
+}
+plot(NA, xlim = range(g$X), ylim = c(-1.6, 1.8), xlab = "X", ylab = "CATE")
+band(fit_lin, "#D55E00")
+band(fit_quad, "#0072B2")
+lines(g$X, tau(g$X), lty = 2, lwd = 3)
+rug(trial$X, col = "grey50"); rug(obs$clean$X, side = 3, col = "#0072B2")
+legend("topleft", c("truth", "linear", "quadratic"), lty = c(2, 1, 1), lwd = c(3, 2, 2),
+       col = c("black", "#D55E00", "#0072B2"), bty = "n")
+```
+
+The rug at the bottom marks the trial, the one at the top the
+observational data. Within the trial's covariate range, the trial data
+ground the curve; beyond it is a model-dependent extrapolation.
+
+## The ATE is reported for the trial population
+
+`mdpl_ate()` standardises over the trial covariates by default. Passing
+`data =` changes the population explicitly, here to the *combined*
+population: the covariates of the trial and the observational data
+stacked. The weights are reported next to each estimate (`eta_clean`,
+`eta_biased`, at `t2`).
+
+```{r ate}
+with_eta <- function(est, fit = NULL) {
+  eta <- if (is.null(fit)) c(NA, NA) else fit$eta[c("clean", "biased"), "t2"]
+  cbind(est, eta_clean = eta[1], eta_biased = eta[2])
+}
+rbind(trial_only = with_eta(mdpl_ate(fit_quad$rct, trial, treat = "A")),
+      linear     = with_eta(mdpl_ate(fit_lin), fit_lin),
+      quadratic  = with_eta(mdpl_ate(fit_quad), fit_quad))
+```
+
+```{r ate-combined}
+combined <- do.call(rbind, c(list(trial), obs))
+rbind(linear    = with_eta(mdpl_ate(fit_lin,  data = combined), fit_lin),
+      quadratic = with_eta(mdpl_ate(fit_quad, data = combined), fit_quad))
+```
+
+The second table is the effect in the *combined* population. It rests on
+extrapolation from the trial for the part of that population the trial
+does not cover, so it depends on the outcome model far more than the
+first.
+
+## In practice
+
+- Compare the covariate distributions before implementing to understand
+  the overlap
+- Prefer an outcome model flexible enough in the covariates that differ
+  (interactions, polynomials or splines in the formula), so the model
+  does not manufacture agreement or disagreement.
+- A low weight can mean a biased source or an inadequate model. Compare
+  the weights across specifications.
+- Read the intervals of `mdpl_cate()` outside the trial range as model
+  extrapolation
+- To target another population, pass its covariates as `data` to
+  `mdpl_ate()`, or as `newdata` to `mdpl_cate()`.
+
+## A note on how much observational data can add
+
+Even with a weight of 1 and a correct model, what observational data add
+to the trial ATE depends on their covariate distribution. Write $z(X)$
+for the covariates that multiply the treatment (here $(1, X, X^2)$),
+$M_k = E_k[z z^\top]$ in source $k$, and $a = E_{\text{trial}}[z]$, so
+that the trial ATE is $a^\top\gamma$ for the treatment coefficients
+$\gamma$. With a randomised treatment and common outcome-model
+parameters, the information about $\gamma$ is additive over sources, and
+
+$$\operatorname{Var}(\widehat{\text{ATE}}) \;\propto\; a^\top\Big(n_{\text{trial}} M_{\text{trial}} + \textstyle\sum_k n_k M_k\Big)^{-1} a .$$
+
+Comparing with the trial alone, and taking $\eta = 1$ (the observational
+data fully pooled), the observational data are worth some number of
+extra trial patients (the constant of proportionality cancels):
+
+```{r info}
+Z <- function(d) cbind(1, d$X, d$X^2)          # z(X) for the quadratic model
+M <- function(d) crossprod(Z(d)) / nrow(d)     # M = E[z z']
+a <- colMeans(Z(trial))
+info <- function(S) {
+  v <- drop(t(a) %*% solve(nrow(trial) * M(trial) + nrow(S) * M(S)) %*% a)
+  c(n_trial = nrow(trial), n_obs = nrow(S),
+    extra_trial_patients = 1 / v - nrow(trial),
+    se_ratio = sqrt(v * nrow(trial)))
+}
+info(obs$clean)
+```
+
+Here the trial has `r nrow(trial)` patients and the observational data
+`r nrow(obs$clean)`, but with $\eta = 1$ the observational data are
+worth about `r round(info(obs$clean)["extra_trial_patients"])` extra
+trial patients for the trial ATE (an effective trial size of
+`r round(nrow(trial) + info(obs$clean)["extra_trial_patients"])`).
+`se_ratio` is the standard error relative to the trial alone.
+
+The 1500 observational patients are therefore worth far fewer than 1500
+trial patients. "Extra trial patients" means patients drawn from the
+trial's own covariate distribution (same centre and variance) that would
+give the same variance for the trial ATE. The reduction comes from
+leverage: how much an observational patient says about the quadratic
+treatment effect at the trial's covariate values depends on where $X$
+sits, and so on the outcome model. Patients clustered away from the
+trial's centre say little about the effect there.
+
+It is largest when the observational covariates are close to the trial's
+and widely spread. It falls as the observational data move away from the
+trial relative to their spread (low leverage at the trial's covariate
+values), and the extrapolated estimate becomes more variable. A weight
+$\eta<1$ can only reduce the gain further.
