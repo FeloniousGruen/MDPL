@@ -11,11 +11,22 @@ Description: Combines a randomised trial with one or several observational
     the 'causl' package, and with user-supplied smooth likelihoods, and
     returns conditional and average treatment effects with bootstrap intervals.
 License: MIT + file LICENSE
+URL: https://github.com/FeloniousGruen/MDPL
+BugReports: https://github.com/FeloniousGruen/MDPL/issues
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.2
 Depends: R (>= 4.0.0)
-Imports: stats, numDeriv
-Suggests: causl, sandwich, knitr, rmarkdown, testthat (>= 3.0.0)
+Imports:
+    numDeriv,
+    stats
+Suggests:
+    causl,
+    knitr,
+    rmarkdown,
+    sandwich,
+    testthat (>= 3.0.0),
+    utils
+Remotes: rje42/causl
 VignetteBuilder: knitr
 Config/testthat/edition: 3

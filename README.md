@@ -1,12 +1,30 @@
-------------------------------------------------------------------------
-
-editor_options: markdown: wrap: 72 ---
-
 # MDPL
 
 This package is the software implementation of the MDPL research paper (Multi-Dimensional Power-Likelihood), a quasi-empirical Bayesian framework that jointly calibrates borrowing from multiple auxiliary datasets when estimating treatment effects in a randomised trial.
 
 The likelihood of each auxiliary (e.g. observational) data set is raised to a weight chosen from the trial data, so informative data sets are borrowed from and biased ones are down-weighted. The package returns conditional (CATE) and average (ATE) treatment effects, with optional bootstrap intervals that account for the weight selection.
+
+<!-- badges: start -->
+[![R-CMD-check](https://github.com/FeloniousGruen/MDPL/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/FeloniousGruen/MDPL/actions/workflows/R-CMD-check.yaml)
+<!-- badges: end -->
+
+## Installation
+
+Install the development version from GitHub:
+
+``` r
+# install.packages("remotes")
+remotes::install_github("FeloniousGruen/MDPL", build_vignettes = TRUE)
+```
+
+Only `numDeriv` is required. To also install the suggested packages, including
+`causl` (for `mdpl_causl()`, fetched from GitHub `rje42/causl` via the
+`Remotes` field), use:
+
+``` r
+remotes::install_github("FeloniousGruen/MDPL", dependencies = TRUE,
+                        build_vignettes = TRUE)
+```
 
 ## Quick start
 

@@ -39,7 +39,8 @@
 #' # Poisson regression written by hand
 #' ll <- function(theta, data) stats::dpois(data$y, exp(theta[1] + theta[2] * data$A), log = TRUE)
 #' spec <- mdpl_custom(ll, start = c(a = 0, A = 0),
-#'                     contrast = function(newdata, treat) matrix(c(0, 1), nrow(newdata), 2, byrow = TRUE))
+#'                     contrast = function(newdata, treat)
+#'                       matrix(c(0, 1), nrow(newdata), 2, byrow = TRUE))
 #' set.seed(1)
 #' d <- data.frame(A = rbinom(200, 1, .5)); d$y <- rpois(200, exp(0.2 + 0.5 * d$A))
 #' mdpl_fit(spec, d)

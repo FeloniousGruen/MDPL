@@ -11,6 +11,14 @@ down-weighting each source's likelihood by a weight chosen from the trial.
 Start with \code{\link[=mdpl]{mdpl()}}; model families are chosen with \code{\link[=mdpl_glm]{mdpl_glm()}},
 \code{\link[=mdpl_causl]{mdpl_causl()}} or \code{\link[=mdpl_custom]{mdpl_custom()}}.
 }
+\seealso{
+Useful links:
+\itemize{
+  \item \url{https://github.com/FeloniousGruen/MDPL}
+  \item Report bugs at \url{https://github.com/FeloniousGruen/MDPL/issues}
+}
+
+}
 \author{
 \strong{Maintainer}: Xi Lin \email{xi.lin@stats.ox.ac.uk}
 

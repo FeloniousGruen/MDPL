@@ -41,9 +41,9 @@ mdpl_causl <- function(formulas, family = rep(1, length(formulas)), outcome = "Y
 causl_info <- function(formulas, family, outcome, kwd) {
   nf <- length(formulas)
   if (length(family) != nf) stop("`family` needs one code per formula, including the copula")
-  forms <- causl:::tidy_formulas(formulas, kwd = kwd)
-  full_form <- causl:::merge_formulas(forms)
-  vars <- causl:::lhs(forms[-nf])
+  forms <- causl::tidy_formulas(formulas, kwd = kwd)
+  full_form <- causl::merge_formulas(forms)
+  vars <- causl::lhs(forms[-nf])
   if (!outcome %in% vars) stop("`outcome` must be the left-hand side of one of the formulas")
   nv <- nf - 1L
   ncop <- choose(nv, 2)
